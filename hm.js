@@ -4,7 +4,7 @@
  * see: http://github.com/jrburke/require-hm for details
  */
 
-/*jslint strict: false, plusplus: false */
+/*jslint strict: false, plusplus: false, regexp: false */
 /*global require: false, XMLHttpRequest: false, ActiveXObject: false,
   define: false, process: false, window: false */
 
@@ -12,6 +12,16 @@
 
     var fs, getXhr,
         progIds = ['Msxml2.XMLHTTP', 'Microsoft.XMLHTTP', 'Msxml2.XMLHTTP.4.0'],
+
+        exportFunctionRegExp = /export\s+function\s+([A-Za-z\d\_]+)/g,
+        exportVarRegExp = /export\s+var\s+([A-Za-z\d\_]+)/g,
+
+        importModuleRegExp = /module|import/g,
+        commaRegExp = /\,\s*$/,
+        spaceRegExp = /\s+/,
+
+        moduleNameRegExp = /['"]([^'"]+)['"]/,
+
         fetchText = function () {
             throw new Error('Environment unsupported.');
         },
@@ -67,10 +77,78 @@
         };
     }
 
-    exportFunctionRegExp = /export\s+function\s+([A-Za-z\d\_]+)/g;
-    exportVarRegExp = /export\s+var\s+([A-Za-z\d\_]+)/g;
+    /**
+     * Trims any trailing spaces and punctuation so just have a JS string
+     * literal, and inserts the hm! loader plugin prefix if necessary. If
+     * there is already a ! in the string, then leave it be, unless it
+     * starts with a ! which means "use normal AMD loading for this dependency".
+     *
+     * @param {String} text
+     * @returns text
+     */
+    function cleanModuleName(text) {
+        var moduleName = moduleNameRegExp.exec(text)[1],
+            index = moduleName.indexOf('!');
+
+        if (index === -1) {
+            // Needs the hm prefix.
+            moduleName = 'hm!' + moduleName;
+        } else if (index === 0) {
+            //Normal AMD loading, strip off the ! sign.
+            moduleName = moduleName.substring(1);
+        }
+
+        return "'" + moduleName + "'";
+    }
+
+    function transformText(type, text) {
+        //Strip off the "module" or "import"
+        text = text.substring(type.length, text.length);
+
+        var modifiedText = '',
+            parts = text.split(','),
+            spaceParts, i, j, part, varName, moduleName, fromIndex;
+
+        for (i = 0; (part = parts[i]); i++) {
+            spaceParts = part.split(spaceRegExp);
+            //Only handle the foo from 'foo', not module foo {}
+            if (type === 'module') {
+                //First find the "from" part.
+                fromIndex = 0;
+                for (j = 0; j < spaceParts.length; j++) {
+                    if (spaceParts[j] === 'from') {
+                        fromIndex = j;
+                        break;
+                    }
+                }
+
+                if (fromIndex > 0) {
+                    varName = spaceParts[fromIndex - 1];
+                    moduleName = cleanModuleName(spaceParts[fromIndex + 1]);
+                    modifiedText += 'var ' + varName + ' = ' + 'require(' + moduleName + ');\n';
+                }
+            } else if (type === 'import') {
+
+            }
+        }
+
+        //console.log('TEXT: ' + text + '\nMODIFIED: ' + modifiedText);
+
+        return modifiedText;
+
+        //import { draw: drawShape } from shape -> var shape = require(';
+
+        //import { messageBox, confirmDialog } from widgets.alert
+
+        //HMM:
+        //import * from math;
+
+    }
+
 
     function compile(text, config) {
+        var transformedText, currentIndex, startIndex, segmentIndex, match,
+            tempText;
 
         //export function foo() - > exports.foo = function
         text = text.replace(exportFunctionRegExp, function (match, funcName) {
@@ -82,21 +160,56 @@
             return 'exports.' + varName;
         });
 
+        //Reset regexp to beginning of file.
+        importModuleRegExp.lastIndex = 0;
+        transformedText = '';
+        currentIndex = 0;
+
+        while ((match = importModuleRegExp.exec(text))) {
+            //Just make the match the module or import string.
+            match = match[0];
+
+            startIndex = segmentIndex = importModuleRegExp.lastIndex - match.length;
+
+            //Copy text segment before the match.
+            transformedText += text.substring(currentIndex, startIndex);
+
+            while (true) {
+                //Find the end of the current set of statements.
+                segmentIndex = text.indexOf('\n', segmentIndex);
+                if (segmentIndex === -1) {
+                    //End of the file. Consume it all.
+                    segmentIndex = text.length - 1;
+                    break;
+                } else {
+                    //Grab the \n in the match.
+                    segmentIndex += 1;
+
+                    tempText = text.substring(startIndex, segmentIndex);
+
+                    //If the tempText ends with a ,[whitespace], then there
+                    //is still more to capture.
+                    if (!commaRegExp.test(tempText)) {
+                        break;
+                    }
+                }
+            }
+
+            transformedText += transformText(match, text.substring(startIndex, segmentIndex));
+
+            importModuleRegExp.lastIndex = currentIndex = segmentIndex;
+        }
+
+        // Finish transferring the rest of the file
+        if (currentIndex < text.length - 1) {
+            transformedText += text.substring(currentIndex, text.length);
+        }
+
         //?? export x (not with var or named function) means setting export
         //value for whole module?
 
-        //import { draw: drawShape } from shape -> var shape = require(';
-
-        //import { messageBox, confirmDialog } from widgets.alert
-
-
-        //module file from 'io/File';
-
-        //HMM:
-        //import * from math;
-
-        return "define(['exports'], function (exports) {\n" +
-                text +
+        return "define(function (require, exports, module) {\n" +
+                transformedText +
                 '\n});';
     }
 
@@ -122,6 +235,9 @@
                     text += "\r\n//@ sourceURL=" + path;
                 }
                 /*@end@*/
+
+
+                //console.log("FINAL TEXT:\n" + text);
 
                 load.fromText(name, text);
 

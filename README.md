@@ -33,8 +33,8 @@ This means some things that would be early errors in a native implementation are
 not early errors with this approach, and there are probably some parsing edge
 cases that fail with this approach vs. native support.
 
-It is possible to take this code and go further with some AST tools like
-UglifyJS, and this code may expand for that purpose, but for now, the regexp
+It is possible to take this code and go further with a real parser, and
+this code may expand for that purpose, but for now, the regexp
 approach allows a quicker proof of concept.
 
 ## Supported APIs

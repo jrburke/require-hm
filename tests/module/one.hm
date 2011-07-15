@@ -1,0 +1,9 @@
+
+module two from 'two',
+       three from 'three';
+
+export var twoName = two.name;
+
+export var twoFunction = two.func;
+
+export var threeName = three.name;
