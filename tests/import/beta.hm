@@ -1,0 +1,8 @@
+
+export var name = 'beta';
+
+export function func() {
+    return 'beta function';
+}
+
+export var uniqueBeta = 'uniqueBeta';

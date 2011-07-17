@@ -1,0 +1,13 @@
+
+module gamma from 'gamma';
+
+import { name: localGammaName } from gamma,
+       { name: localBetaName, func: localBetaFunc, uniqueBeta } from 'beta';
+
+export var gammaName = localGammaName;
+
+export var betaName = localBetaName;
+
+export var betaFunc = localBetaFunc;
+
+export var betaUnique = uniqueBeta;

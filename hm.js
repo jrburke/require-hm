@@ -19,8 +19,10 @@
         importModuleRegExp = /module|import/g,
         commaRegExp = /\,\s*$/,
         spaceRegExp = /\s+/,
-
+        quoteRegExp = /['"]/,
+        endingPuncRegExp = /[\,\;]\s*$/,
         moduleNameRegExp = /['"]([^'"]+)['"]/,
+        braceRegExp = /[\{\}]/g,
 
         fetchText = function () {
             throw new Error('Environment unsupported.');
@@ -101,34 +103,80 @@
         return "'" + moduleName + "'";
     }
 
+    /**
+     * Expands things like
+     * import { draw: drawShape } from shape
+     * to be variable assignments.
+     */
+    function expandImportRefs(text, moduleName) {
+        //Strip off the curly braces
+        text = text.replace(braceRegExp, '');
+
+        //Split by commas
+        var parts = text.split(','),
+            modifiedText = '',
+            colonParts, i, part;
+
+        if (parts[0] === '*') {
+            throw 'Does not support import * yet.';
+        }
+
+        for (i = 0; (part = parts[i]); i++) {
+            colonParts = part.split(':');
+
+            //Normalize foo to be foo:foo
+            colonParts[1] = colonParts[1] || colonParts[0];
+
+            modifiedText += 'var ' + colonParts[1] + ' = ' + moduleName + '.' + colonParts[0] + ';';
+        }
+
+        return modifiedText;
+    }
+
     function transformText(type, text) {
         //Strip off the "module" or "import"
         text = text.substring(type.length, text.length);
 
         var modifiedText = '',
-            parts = text.split(','),
-            spaceParts, i, j, part, varName, moduleName, fromIndex;
+            spaceParts = text.split(spaceRegExp),
+            i, j, varName, moduleName, fromIndex, firstChar, propRefs;
 
-        for (i = 0; (part = parts[i]); i++) {
-            spaceParts = part.split(spaceRegExp);
-            //Only handle the foo from 'foo', not module foo {}
-            if (type === 'module') {
-                //First find the "from" part.
-                fromIndex = 0;
-                for (j = 0; j < spaceParts.length; j++) {
-                    if (spaceParts[j] === 'from') {
-                        fromIndex = j;
-                        break;
+        //First find the "from" part.
+        for (i = 0; i < spaceParts.length; i++) {
+            if (spaceParts[i] === 'from') {
+                fromIndex = i;
+
+                //Only handle the foo from 'foo', not module foo {}
+                if (type === 'module') {
+                    if (fromIndex > 0) {
+                        varName = spaceParts[fromIndex - 1];
+                        moduleName = cleanModuleName(spaceParts[fromIndex + 1]);
+                        modifiedText += 'var ' + varName + ' = ' + 'require(' + moduleName + ');\n';
+                    }
+                } else if (type === 'import') {
+                    if (fromIndex > 0) {
+                        //Clean up the module name, if a string, do a require() around it.
+                        moduleName = spaceParts[fromIndex + 1];
+                        if (quoteRegExp.test(moduleName)) {
+                            moduleName = 'require(' + cleanModuleName(moduleName) + ')';
+                        } else {
+                            // Strip off any trailing punctuation
+                            moduleName = moduleName.replace(endingPuncRegExp, '');
+                        }
+
+                        //Find the staring brace or * for the start of the import
+                        propRefs = '';
+                        for (j = fromIndex - 1; j >= 0; j--) {
+                            firstChar = spaceParts[j].charAt(0);
+                            if (firstChar === '{' || firstChar === '*') {
+                                //Property refs.
+                                propRefs = spaceParts.slice(j, fromIndex).join('');
+                                modifiedText += expandImportRefs(propRefs, moduleName);
+                                break;
+                            }
+                        }
                     }
                 }
-
-                if (fromIndex > 0) {
-                    varName = spaceParts[fromIndex - 1];
-                    moduleName = cleanModuleName(spaceParts[fromIndex + 1]);
-                    modifiedText += 'var ' + varName + ' = ' + 'require(' + moduleName + ');\n';
-                }
-            } else if (type === 'import') {
-
             }
         }
 
