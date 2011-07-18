@@ -13,8 +13,7 @@
     var fs, getXhr,
         progIds = ['Msxml2.XMLHTTP', 'Microsoft.XMLHTTP', 'Msxml2.XMLHTTP.4.0'],
 
-        exportFunctionRegExp = /export\s+function\s+([A-Za-z\d\_]+)/g,
-        exportVarRegExp = /export\s+var\s+([A-Za-z\d\_]+)/g,
+        exportRegExp = /export\s+([A-Za-z\d\_]+)(\s+([A-Za-z\d\_]+))?/g,
 
         importModuleRegExp = /module|import/g,
         commaRegExp = /\,\s*$/,
@@ -26,8 +25,7 @@
 
         fetchText = function () {
             throw new Error('Environment unsupported.');
-        },
-        buildMap = [];
+        };
 
     if (typeof window !== "undefined" && window.navigator && window.document) {
         // Browser action
@@ -108,38 +106,48 @@
      * import { draw: drawShape } from shape
      * to be variable assignments.
      */
-    function expandImportRefs(text, moduleName) {
+    function expandImportRefs(moduleMap, text, moduleName) {
         //Strip off the curly braces
         text = text.replace(braceRegExp, '');
 
         //Split by commas
         var parts = text.split(','),
             modifiedText = '',
+            stars = [],
+            hasQuotes = quoteRegExp.test(moduleName),
+            stringLiteralName = hasQuotes ? moduleName : moduleMap[moduleName],
             colonParts, i, part;
 
         if (parts[0] === '*') {
-            throw 'Does not support import * yet.';
+            stars.push(stringLiteralName);
+            modifiedText = '/*IMPORTSTAR:' + stringLiteralName + '*/';
+        } else {
+            for (i = 0; (part = parts[i]); i++) {
+                colonParts = part.split(':');
+
+                //Normalize foo to be foo:foo
+                colonParts[1] = colonParts[1] || colonParts[0];
+
+                modifiedText += 'var ' + colonParts[1] + ' = ' +
+                    (hasQuotes ? 'require(' + moduleName + ')' : moduleName) +
+                    '.' + colonParts[0] + ';';
+            }
         }
 
-        for (i = 0; (part = parts[i]); i++) {
-            colonParts = part.split(':');
-
-            //Normalize foo to be foo:foo
-            colonParts[1] = colonParts[1] || colonParts[0];
-
-            modifiedText += 'var ' + colonParts[1] + ' = ' + moduleName + '.' + colonParts[0] + ';';
-        }
-
-        return modifiedText;
+        return {
+            stars: stars,
+            text: modifiedText
+        };
     }
 
-    function transformText(type, text) {
+    function transformText(moduleMap, type, text) {
         //Strip off the "module" or "import"
         text = text.substring(type.length, text.length);
 
         var modifiedText = '',
             spaceParts = text.split(spaceRegExp),
-            i, j, varName, moduleName, fromIndex, firstChar, propRefs;
+            stars = [],
+            i, j, varName, moduleName, fromIndex, firstChar, propRefs, imports;
 
         //First find the "from" part.
         for (i = 0; i < spaceParts.length; i++) {
@@ -152,13 +160,14 @@
                         varName = spaceParts[fromIndex - 1];
                         moduleName = cleanModuleName(spaceParts[fromIndex + 1]);
                         modifiedText += 'var ' + varName + ' = ' + 'require(' + moduleName + ');\n';
+                        moduleMap[varName] = moduleName;
                     }
                 } else if (type === 'import') {
                     if (fromIndex > 0) {
                         //Clean up the module name, if a string, do a require() around it.
                         moduleName = spaceParts[fromIndex + 1];
                         if (quoteRegExp.test(moduleName)) {
-                            moduleName = 'require(' + cleanModuleName(moduleName) + ')';
+                            moduleName = cleanModuleName(moduleName);
                         } else {
                             // Strip off any trailing punctuation
                             moduleName = moduleName.replace(endingPuncRegExp, '');
@@ -171,7 +180,11 @@
                             if (firstChar === '{' || firstChar === '*') {
                                 //Property refs.
                                 propRefs = spaceParts.slice(j, fromIndex).join('');
-                                modifiedText += expandImportRefs(propRefs, moduleName);
+                                imports = expandImportRefs(moduleMap, propRefs, moduleName);
+                                if (imports.stars && imports.stars.length) {
+                                    stars = stars.concat(imports.stars);
+                                }
+                                modifiedText += imports.text;
                                 break;
                             }
                         }
@@ -182,30 +195,32 @@
 
         //console.log('TEXT: ' + text + '\nMODIFIED: ' + modifiedText);
 
-        return modifiedText;
-
-        //import { draw: drawShape } from shape -> var shape = require(';
-
-        //import { messageBox, confirmDialog } from widgets.alert
-
-        //HMM:
-        //import * from math;
-
+        return {
+            stars: stars,
+            text: modifiedText
+        };
     }
 
 
     function compile(text, config) {
-        var transformedText, currentIndex, startIndex, segmentIndex, match,
-            tempText;
-
-        //export function foo() - > exports.foo = function
-        text = text.replace(exportFunctionRegExp, function (match, funcName) {
-            return 'exports.' + funcName + ' = function ' + funcName;
-        });
+        var stars = [],
+            moduleMap = {},
+            transformedText, currentIndex, startIndex, segmentIndex, match,
+            tempText, transformed;
 
         //export var foo -> exports.foo
-        text = text.replace(exportVarRegExp, function (match, varName) {
-            return 'exports.' + varName;
+        text = text.replace(exportRegExp, function (match, varOrFunc, spacePlusName, name) {
+            if (!name) {
+                //exposing a local variable as an export value, where
+                //its value was assigned before the export call.
+                return 'exports.' + varOrFunc + ' = ' + varOrFunc;
+            } else if (varOrFunc === 'var') {
+                return 'exports.' + name;
+            } else if (varOrFunc === 'function') {
+                return 'exports.' + name + ' = function ' + name;
+            } else {
+                return match;
+            }
         });
 
         //Reset regexp to beginning of file.
@@ -243,7 +258,11 @@
                 }
             }
 
-            transformedText += transformText(match, text.substring(startIndex, segmentIndex));
+            transformed = transformText(moduleMap, match, text.substring(startIndex, segmentIndex));
+            transformedText += transformed.text;
+            if (transformed.stars && transformed.stars.length) {
+                stars = stars.concat[transformed.stars];
+            }
 
             importModuleRegExp.lastIndex = currentIndex = segmentIndex;
         }
@@ -256,9 +275,25 @@
         //?? export x (not with var or named function) means setting export
         //value for whole module?
 
-        return "define(function (require, exports, module) {\n" +
-                transformedText +
-                '\n});';
+        //console.log("Transformed text: " + transformedText);
+
+        return {
+            text: "define(function (require, exports, module) {\n" +
+                  transformedText +
+                  '\n});',
+            stars: stars
+        };
+    }
+
+    function finishLoad(require, load, name, text) {
+        load.fromText(name, text);
+
+        //Give result to load. Need to wait until the module
+        //is fully parsed, which will happen after this
+        //execution.
+        require([name], function (value) {
+            load(value);
+        });
     }
 
     define({
@@ -267,14 +302,9 @@
         load: function (name, require, load, config) {
             var path = require.toUrl(name + '.hm');
             fetchText(path, function (text) {
-
+                var result = compile(text, config.hm);
                 //Do initial transforms.
-                text = compile(text, config.hm);
-
-                //Hold on to the transformed text if a build.
-                if (config.isBuild) {
-                    buildMap[name] = text;
-                }
+                text = result.text;
 
                 //IE with conditional comments on cannot handle the
                 //sourceURL trick, so skip it if enabled.
@@ -284,27 +314,35 @@
                 }
                 /*@end@*/
 
+                if (result.stars && result.stars.length) {
+                    //First load any imports that require recursive analysis
+                    //TODO: this will break if there is a circular
+                    //dependency with each file doing an import * on each other.
+                    require(result.stars, function () {
+                        var i, star, mod, starText, prop;
 
-                //console.log("FINAL TEXT:\n" + text);
+                        //Now fix up the import * items for each module.
+                        for (i = 0; (star = result.stars); i++) {
+                            starText = '';
+                            mod = arguments[i];
+                            for (prop in mod) {
+                                if (mod.hasOwnProperty(prop)) {
+                                    starText = 'var ' + prop + ' = ' + star + '.' + prop + ';';
+                                }
+                            }
+                            text = text.replace('/*IMPORTSTAR:' + star + '*/', starText);
+                        }
 
-                load.fromText(name, text);
+                        //console.log("FINAL TEXT:\n" + text);
 
-                //Give result to load. Need to wait until the module
-                //is fully parsed, which will happen after this
-                //execution.
-                require([name], function (value) {
-                    load(value);
-                });
+                        finishLoad(require, load, name, text);
+                    });
+
+
+                } else {
+                    finishLoad(require, load, name, text);
+                }
             });
-
-        },
-
-        write: function (pluginName, name, write) {
-            if (name in buildMap) {
-                var text = buildMap[name];
-                write.asModule(pluginName + "!" + name, text);
-            }
         }
     });
-
 }());

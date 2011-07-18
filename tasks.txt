@@ -7,3 +7,6 @@
 Is it OK to do:
     import { gammaName: name } from gamma;
     export gammaName;
+
+* Get builds to work
+  * Just use the text plugin, and use its inlining? So that import * can be supported.

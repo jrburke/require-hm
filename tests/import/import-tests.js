@@ -13,7 +13,7 @@ function (alpha) {
                 t.is("gamma", alpha.gammaName);
                 t.is("beta", alpha.betaName);
                 t.is("beta function", alpha.betaFunc());
-                t.is("uniqueBeta", alpha.betaUnique);
+                t.is("uniqueBeta", alpha.uniqueBeta);
             }
         ]
     );

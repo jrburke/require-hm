@@ -1,13 +1,13 @@
 
 module gamma from 'gamma';
 
-import { name: localGammaName } from gamma,
-       { name: localBetaName, func: localBetaFunc, uniqueBeta } from 'beta';
+import { name: gammaName } from gamma,
+       { name: betaName, func: betaFunc, uniqueBeta } from 'beta';
 
-export var gammaName = localGammaName;
+export gammaName;
 
-export var betaName = localBetaName;
+export betaName;
 
-export var betaFunc = localBetaFunc;
+export betaFunc;
 
-export var betaUnique = uniqueBeta;
+export uniqueBeta;
