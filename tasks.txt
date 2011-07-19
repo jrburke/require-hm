@@ -1,11 +1,9 @@
 
-* Need to allow comments in modules, skip them though.
-  * Test with a comment that contains "module" or "export" or "import".
-
-
 Is it OK to do:
     import { gammaName: name } from gamma;
     export gammaName;
+
+What about setting the export for the module to a function?
 
 * Get builds to work
   * Just use the text plugin, and use its inlining? So that import * can be supported.

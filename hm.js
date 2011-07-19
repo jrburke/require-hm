@@ -14,7 +14,7 @@
         progIds = ['Msxml2.XMLHTTP', 'Microsoft.XMLHTTP', 'Msxml2.XMLHTTP.4.0'],
 
         exportRegExp = /export\s+([A-Za-z\d\_]+)(\s+([A-Za-z\d\_]+))?/g,
-
+        commentRegExp = /(\/\*([\s\S]*?)\*\/|[^\:]\/\/(.*)$)/mg,
         importModuleRegExp = /module|import/g,
         commaRegExp = /\,\s*$/,
         spaceRegExp = /\s+/,
@@ -211,11 +211,70 @@
     function compile(text, config) {
         var stars = [],
             moduleMap = {},
-            transformedText, currentIndex, startIndex, segmentIndex, match,
-            tempText, transformed;
+            transforms = {},
+            currentIndex = 0,
+            //Remove comments from the text to be scanned
+            scanText = text.replace(commentRegExp, ""),
+            transformInputText, transformedText,
+            startIndex, segmentIndex, match, tempText, transformed;
 
+        //Reset regexp to beginning of file.
+        importModuleRegExp.lastIndex = 0;
+
+        while ((match = importModuleRegExp.exec(scanText))) {
+            //Just make the match the module or import string.
+            match = match[0];
+
+            startIndex = segmentIndex = importModuleRegExp.lastIndex - match.length;
+
+            while (true) {
+                //Find the end of the current set of statements.
+                segmentIndex = scanText.indexOf('\n', segmentIndex);
+                if (segmentIndex === -1) {
+                    //End of the file. Consume it all.
+                    segmentIndex = scanText.length - 1;
+                    break;
+                } else {
+                    //Grab the \n in the match.
+                    segmentIndex += 1;
+
+                    tempText = scanText.substring(startIndex, segmentIndex);
+
+                    //If the tempText ends with a ,[whitespace], then there
+                    //is still more to capture.
+                    if (!commaRegExp.test(tempText)) {
+                        break;
+                    }
+                }
+            }
+
+
+            transformInputText = scanText.substring(startIndex, segmentIndex);
+            if (!transforms[transformInputText]) {
+                transformed = transformText(moduleMap, match, transformInputText);
+                transforms[transformInputText] = transformed.text;
+
+                if (transformed.stars && transformed.stars.length) {
+                    stars = stars.concat(transformed.stars);
+                }
+            }
+
+            importModuleRegExp.lastIndex = currentIndex = segmentIndex;
+        }
+
+        //Apply the text transforms
+        transformedText = text;
+        for (transformInputText in transforms) {
+            if (transforms.hasOwnProperty(transformInputText)) {
+                transformedText = transformedText.replace(transformInputText, transforms[transformInputText]);
+            }
+        }
+
+        //Convert export calls. Supported:
         //export var foo -> exports.foo
-        text = text.replace(exportRegExp, function (match, varOrFunc, spacePlusName, name) {
+        //export function foo(){} -> exports.foo = function(){}
+        //export varName -> exports.varName = varName
+        transformedText = transformedText.replace(exportRegExp, function (match, varOrFunc, spacePlusName, name) {
             if (!name) {
                 //exposing a local variable as an export value, where
                 //its value was assigned before the export call.
@@ -229,60 +288,10 @@
             }
         });
 
-        //Reset regexp to beginning of file.
-        importModuleRegExp.lastIndex = 0;
-        transformedText = '';
-        currentIndex = 0;
-
-        while ((match = importModuleRegExp.exec(text))) {
-            //Just make the match the module or import string.
-            match = match[0];
-
-            startIndex = segmentIndex = importModuleRegExp.lastIndex - match.length;
-
-            //Copy text segment before the match.
-            transformedText += text.substring(currentIndex, startIndex);
-
-            while (true) {
-                //Find the end of the current set of statements.
-                segmentIndex = text.indexOf('\n', segmentIndex);
-                if (segmentIndex === -1) {
-                    //End of the file. Consume it all.
-                    segmentIndex = text.length - 1;
-                    break;
-                } else {
-                    //Grab the \n in the match.
-                    segmentIndex += 1;
-
-                    tempText = text.substring(startIndex, segmentIndex);
-
-                    //If the tempText ends with a ,[whitespace], then there
-                    //is still more to capture.
-                    if (!commaRegExp.test(tempText)) {
-                        break;
-                    }
-                }
-            }
-
-            transformed = transformText(moduleMap, match, text.substring(startIndex, segmentIndex));
-            transformedText += transformed.text;
-            if (transformed.stars && transformed.stars.length) {
-                stars = stars.concat(transformed.stars);
-            }
-
-            importModuleRegExp.lastIndex = currentIndex = segmentIndex;
-        }
-
-        // Finish transferring the rest of the file
-        if (currentIndex < text.length - 1) {
-            transformedText += text.substring(currentIndex, text.length);
-        }
-
         //?? export x (not with var or named function) means setting export
         //value for whole module?
 
-        //console.log("Transformed text: " + transformedText);
-
+        console.log("INPUT:\n" + text + "\n\nTRANSFORMED:\n" + transformedText);
         return {
             text: "define(function (require, exports, module) {\n" +
                   transformedText +

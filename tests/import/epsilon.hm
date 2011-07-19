@@ -1,4 +1,11 @@
 
+/*
+Fake comment to try to break the hm parser.
+module bad from 'bad';
+*/
+
+//import {bad2} from 'bad2'
+
 module theta from 'theta';
 
 import * from theta;
