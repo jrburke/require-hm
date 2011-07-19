@@ -1,9 +1,13 @@
 
+//Ask for some modules, use AMD module for four.
 module two from 'two',
-       three from 'three';
+       three from 'three',
+       four from '!four';
 
 export var twoName = two.name;
 
 export var twoFunction = two.func;
 
 export var threeName = three.name;
+
+export var fourName = four.name;

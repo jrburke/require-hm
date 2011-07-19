@@ -7,3 +7,18 @@ What about setting the export for the module to a function?
 
 * Get builds to work
   * Just use the text plugin, and use its inlining? So that import * can be supported.
+
+switch to text plugin
+put in demo
+
+
+Text parsing that fails:
+
+module two from 'two',
+       three from 'three',
+       four from '!four'; //comment here
+
+module two from 'two',
+       three from 'three',
+       //comment in here.
+       four from '!four';
