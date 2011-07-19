@@ -1,7 +1,6 @@
 
 * Need to allow comments in modules, skip them though.
   * Test with a comment that contains "module" or "export" or "import".
-* Put in support for import *
 
 
 Is it OK to do:

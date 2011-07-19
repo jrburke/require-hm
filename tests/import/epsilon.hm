@@ -1,0 +1,13 @@
+
+module theta from 'theta';
+
+import * from theta;
+import * from 'sigma';
+
+export thetaOne;
+
+export thetaTwo;
+
+export sigmaFunc;
+
+export sigmaNumber;

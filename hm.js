@@ -118,8 +118,14 @@
             stringLiteralName = hasQuotes ? moduleName : moduleMap[moduleName],
             colonParts, i, part;
 
+        stringLiteralName = stringLiteralName.substring(1, stringLiteralName.length - 1);
+
         if (parts[0] === '*') {
+            //Strip the quotes from the string name and put it in the stars
             stars.push(stringLiteralName);
+
+            //Put in placeholder in module text to replace later once
+            //module is fetched.
             modifiedText = '/*IMPORTSTAR:' + stringLiteralName + '*/';
         } else {
             for (i = 0; (part = parts[i]); i++) {
@@ -261,7 +267,7 @@
             transformed = transformText(moduleMap, match, text.substring(startIndex, segmentIndex));
             transformedText += transformed.text;
             if (transformed.stars && transformed.stars.length) {
-                stars = stars.concat[transformed.stars];
+                stars = stars.concat(transformed.stars);
             }
 
             importModuleRegExp.lastIndex = currentIndex = segmentIndex;
@@ -322,12 +328,12 @@
                         var i, star, mod, starText, prop;
 
                         //Now fix up the import * items for each module.
-                        for (i = 0; (star = result.stars); i++) {
+                        for (i = 0; (star = result.stars[i]); i++) {
                             starText = '';
                             mod = arguments[i];
                             for (prop in mod) {
                                 if (mod.hasOwnProperty(prop)) {
-                                    starText = 'var ' + prop + ' = ' + star + '.' + prop + ';';
+                                    starText += 'var ' + prop + ' = require("' + star + '").' + prop + '; ';
                                 }
                             }
                             text = text.replace('/*IMPORTSTAR:' + star + '*/', starText);
