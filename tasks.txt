@@ -8,7 +8,11 @@ What about setting the export for the module to a function?
 * Get builds to work
   * Just use the text plugin, and use its inlining? So that import * can be supported.
 
-switch to text plugin
+switch to text plugin?
+    - How to handle .js URLs? nameToUrl, but text no longer uses it.
+    - could use own xhr stuff as now, use nameToUrl if available?
+      - need built format to work well for IMPORTSTAR text.
+
 put in demo
 
 
@@ -22,3 +26,9 @@ module two from 'two',
        three from 'three',
        //comment in here.
        four from '!four';
+
+FAQ:
+
+Cannot use .js for files, use .hm:
+    * want optimizer to still work. Will try to optimize .js file via minifiers,
+      which will break with the new keywords.
