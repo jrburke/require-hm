@@ -94,27 +94,26 @@ define(['esprima'], function (esprima) {
     }
 
     /**
-     * Trims any trailing spaces and punctuation so just have a JS string
-     * literal, and inserts the hm! loader plugin prefix if necessary. If
-     * there is already a ! in the string, then leave it be, unless it
-     * starts with a ! which means "use normal AMD loading for this dependency".
+     * Inserts the hm! loader plugin prefix if necessary. If
+     * there is already a ! in the string, then leave it be, and if it
+     * starts with a ! it means "use normal AMD loading for this dependency".
      *
-     * @param {String} text
-     * @returns text
+     * @param {String} id
+     * @returns id
      */
-    function cleanModuleName(text) {
-        var moduleName = moduleNameRegExp.exec(text)[1],
-            index = moduleName.indexOf('!');
+    function cleanModuleId(id) {
+        id = moduleNameRegExp.exec(id)[1];
+        var index = id.indexOf('!');
 
         if (index === -1) {
             // Needs the hm prefix.
-            moduleName = 'hm!' + moduleName;
+            id = 'hm!' + id;
         } else if (index === 0) {
             //Normal AMD loading, strip off the ! sign.
-            moduleName = moduleName.substring(1);
+            id = id.substring(1);
         }
 
-        return "'" + moduleName + "'";
+        return id;
     }
 
     /**
@@ -227,6 +226,22 @@ define(['esprima'], function (esprima) {
     }
 */
 
+    function convertModuleSyntax(tokens, i) {
+        //Converts `foo = 'bar'` to `foo = require('bar')`
+        var varName = tokens[i],
+            eq = tokens[i + 1],
+            id = tokens[i + 2];
+
+        if (varName.type === 'Identifier' &&
+                eq.type === 'Punctuator' && eq.value === '=' &&
+                id.type === 'String') {
+            return varName.value + ' = require("' + cleanModuleId(id.value) + '")';
+        } else {
+            throw new Error('Invalide module reference: module ' +
+                varName.value + ' ' + eq.value + ' ' + id.value);
+        }
+    }
+
     function transpile(text, target, replacement) {
         return text.substring(0, target.start) +
                replacement +
@@ -261,16 +276,25 @@ define(['esprima'], function (esprima) {
 
 
         each(tokens, function (token, i) {
-            var next, next2;
+            if (token.type !== 'Keyword') {
+                //Not relevant, skip
+                return;
+            }
 
-            if (token.type === 'Keyword' && token.value === 'export') {
-                next = tokens[i + 1];
-                next2 = tokens[i + 2];
+            var next = tokens[i + 1],
+                next2 = tokens[i + 2],
+                next3 = tokens[i + 3],
+                cursor = i,
+                replacement,
+                target;
+
+            if (token.value === 'export') {
+                // EXPORTS
                 if (next.type === 'Keyword') {
                     if (next.value === 'var' || next.value === 'let') {
                         targets.push({
                             start: token.range[0],
-                            end: next.range[1],
+                            end: next2.range[0],
                             type: 'export',
                             subType: next.value
                         });
@@ -287,6 +311,33 @@ define(['esprima'], function (esprima) {
                                         ' ' + next.value + ' ' + tokens[i + 2]);
                     }
                 }
+            } else if (token.value === 'module') {
+                // MODULE
+                // module Bar = "bar.js";
+                replacement = 'var ';
+                target = {
+                    start: token.range[0],
+                    type: 'module'
+                };
+
+                while (token.value === 'module' || (token.type === 'Punctuator'
+                        && token.value === ',')) {
+                    cursor = cursor + 1;
+                    replacement += convertModuleSyntax(tokens, cursor);
+                    token = tokens[cursor + 3];
+                    //Current module spec does not allow for
+                    //module a = 'a', b = 'b';
+                    //must end in semicolon. But keep this in case for later,
+                    //as comma separators would be nice.
+                    //esprima will throw if comma is not allowed.
+                    if ((token.type === 'Punctuator' && token.value === ',')) {
+                        replacement += ',\n';
+                    }
+                }
+
+                target.end = token.range[0];
+                target.replacement = replacement;
+                targets.push(target);
             }
         });
 
@@ -309,6 +360,8 @@ define(['esprima'], function (esprima) {
                 } else {
                     transformedText = transpile(transformedText, target, 'exports.');
                 }
+            } else if (target.type === 'module') {
+                transformedText = transpile(transformedText, target, target.replacement);
             }
         });
 

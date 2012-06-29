@@ -1,6 +1,7 @@
 require({
     paths: {
-        hm: '../../hm'
+        hm: '../../hm',
+        esprima: '../../esprima'
     }
 });
 

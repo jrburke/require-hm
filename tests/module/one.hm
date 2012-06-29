@@ -1,8 +1,8 @@
 
 //Ask for some modules, use AMD module for four.
-module two from 'two',
-       three from 'three',
-       four from '!four';
+module two = 'two';
+module three = 'three';
+module four = '!four';
 
 export var twoName = two.name;
 
