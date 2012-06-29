@@ -25,23 +25,50 @@ that holds together in real code.
 
 ## Limitations
 
-The loader plugin just uses some regular expressions, and
-it relies on existing JavaScript engines, which cannot do the fancy compilation
-and linking that native support can do.
+The loader plugin cannot do the fancy compilation and linking that native
+support can do, but it can simulate a lot of it.
 
 This means some things that would be early errors in a native implementation are
-not early errors with this approach, and there are probably some parsing edge
-cases that fail with this approach vs. native support.
+not early errors with this approach.
 
-It is possible to take this code and go further with a real parser, and
-this code may expand for that purpose, but for now, the regexp
-approach allows a quicker proof of concept.
+## Choices done outside the proposals
 
-## Supported APIs
+1) The harmony proposals do not define a way to translate dependency strings to
+actual file paths, just mentions the ability to use URLs.
 
-TODO
-module math {} NOT supported
+This plugin uses the AMD ID-to-path resolution for IDs.
 
-string resolution: .js and mod/name
-Mention .hm for the files that are harmony files.
-Inclusion and exclusion lists?
+2) .hm is used for the text files that are processed by this plugin, not .js
+files. This is to help separate that these files are "special" and not regular
+.js files.
+
+## Supported
+
+    export var foo = 'foo';
+    export function foo() {};
+    module Bar = 'Bar';
+
+    import y from Bar;
+    import {y} from Bar;
+    import { modProp: localProp } from Bar;
+    import * from Bar;
+
+## Unsupported
+
+1) The following import variation is not supported, since the `module` form
+is sufficient:
+
+    //Use `module Bar = 'Bar'` instead.
+    //This is not supported:
+    import "Bar.js" as Bar;
+
+2) Using identifiers for "inline modules" is not supported:
+
+    module Bar {}
+
+What will be supported, but is not there yet, will be using string IDs,
+since this matches better to `module Bar = 'Bar'` usage, particularly when
+modules are combined in a build:
+
+    module 'Bar' {}
+

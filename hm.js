@@ -37,6 +37,7 @@ define(['esprima'], function (esprima) {
         quoteRegExp = /['"]/,
         endingPuncRegExp = /[\,\;]\s*$/,
         moduleNameRegExp = /['"]([^'"]+)['"]/,
+        startQuoteRegExp = /^['"]/,
         braceRegExp = /[\{\}]/g,
 
         fetchText = function () {
@@ -226,6 +227,54 @@ define(['esprima'], function (esprima) {
     }
 */
 
+    function convertImportSyntax(tokens, start, end, moduleTarget) {
+        var token = tokens[start],
+            cursor = start,
+            replacement = '',
+            localVars = {},
+            currentVar;
+
+        if (token.type === 'Punctuator' && token.value === '*') {
+            //import * from x
+        } else if (token.type === 'Identifier') {
+            //import y from x
+            replacement += 'var ' + token.value + ' = ' +
+                            moduleTarget + '.' + token.value + ';';
+        } else if (token.type === 'Identifier' && token.value === '{') {
+            cursor += 1;
+            token = tokens[cursor];
+            while (cursor !== end && token.value !== '}') {
+                if (token.type === 'Identifier') {
+                    if (currentVar) {
+                        localVars[currentVar] = token.value;
+                        currentVar = null;
+                    } else {
+                        currentVar = token.value;
+                    }
+                } else if (token.type === 'Punctuator') {
+                    if (token.value === ',') {
+                        if (currentVar) {
+                            localVars[currentVar] = currentVar;
+                            currentVar = null;
+                        }
+                    }
+                }
+                cursor += 1;
+                token = tokens[cursor];
+            }
+            if (currentVar) {
+                localVars[currentVar] = currentVar;
+            }
+
+            //Now serialize the localVars
+
+        } else {
+            throw new Error('Invalid import: import ' +
+                token.value + ' ' + tokens[start + 1].value +
+                ' ' + tokens[start + 2].value);
+        }
+    }
+
     function convertModuleSyntax(tokens, i) {
         //Converts `foo = 'bar'` to `foo = require('bar')`
         var varName = tokens[i],
@@ -237,7 +286,7 @@ define(['esprima'], function (esprima) {
                 id.type === 'String') {
             return varName.value + ' = require("' + cleanModuleId(id.value) + '")';
         } else {
-            throw new Error('Invalide module reference: module ' +
+            throw new Error('Invalid module reference: module ' +
                 varName.value + ' ' + eq.value + ' ' + id.value);
         }
     }
@@ -274,7 +323,6 @@ define(['esprima'], function (esprima) {
             throw new Error('Esprima cannot parse: ' + path + ': ' + e);
         }
 
-
         each(tokens, function (token, i) {
             if (token.type !== 'Keyword') {
                 //Not relevant, skip
@@ -286,6 +334,7 @@ define(['esprima'], function (esprima) {
                 next3 = tokens[i + 3],
                 cursor = i,
                 replacement,
+                moduleTarget,
                 target;
 
             if (token.value === 'export') {
@@ -338,6 +387,34 @@ define(['esprima'], function (esprima) {
                 target.end = token.range[0];
                 target.replacement = replacement;
                 targets.push(target);
+            } else if (token.value === 'import') {
+                // IMPORT
+                //import * from Bar;
+
+                cursor = i;
+                //Find the "from" in the statement
+                while (tokens[cursor] &&
+                        tokens[cursor].type !== 'Keyword' &&
+                        tokens[cursor].value !== 'from') {
+                    cursor += 1;
+                }
+
+                //Increase cursor one more value to find the module target
+                moduleTarget = tokens[cursor + 1];
+
+                //Convert module target to an AMD usable name. If a string,
+                //then needs to be accessed via require()
+                moduleTarget = startQuoteRegExp.test(moduleTarget) ?
+                                'require(' + moduleTarget + ')' :
+                                moduleTarget;
+                replacement = convertImportSyntax(tokens, i, cursor - 1, moduleTarget);
+
+                target.push({
+                    type: 'import',
+                    start: token.range[0],
+                    end: tokens[cursor + 2].range[0],
+                    replacement: replacement
+                });
             }
         });
 
@@ -360,7 +437,7 @@ define(['esprima'], function (esprima) {
                 } else {
                     transformedText = transpile(transformedText, target, 'exports.');
                 }
-            } else if (target.type === 'module') {
+            } else if (target.type === 'module' || target.type === 'import') {
                 transformedText = transpile(transformedText, target, target.replacement);
             }
         });
