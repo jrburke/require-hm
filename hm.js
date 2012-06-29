@@ -4,9 +4,9 @@
  * see: http://github.com/jrburke/require-hm for details
  */
 
-/*jslint */
-/*global require: false, XMLHttpRequest: false, ActiveXObject: false,
-  define: false, process: false, window: false */
+/*jslint plusplus: true, regexp: true */
+/*global require, XMLHttpRequest, ActiveXObject, define, process, window,
+console */
 
 define(['esprima'], function (esprima) {
     'use strict';
@@ -25,22 +25,6 @@ define(['esprima'], function (esprima) {
             }
         }
     }
-
-    /**
-     * Helper function for iterating over an array backwards. If the func
-     * returns a true value, it will break out of the loop.
-     */
-    function eachReverse(ary, func) {
-        if (ary) {
-            var i;
-            for (i = ary.length - 1; i > -1; i -= 1) {
-                if (ary[i] && func(ary[i], i, ary)) {
-                    break;
-                }
-            }
-        }
-    }
-
 
     var fs, getXhr,
         progIds = ['Msxml2.XMLHTTP', 'Microsoft.XMLHTTP', 'Msxml2.XMLHTTP.4.0'],
@@ -138,6 +122,7 @@ define(['esprima'], function (esprima) {
      * import { draw: drawShape } from shape
      * to be variable assignments.
      */
+/*
     function expandImportRefs(moduleMap, text, moduleName) {
         //Strip off the curly braces
         text = text.replace(braceRegExp, '');
@@ -160,7 +145,7 @@ define(['esprima'], function (esprima) {
 
             //Put in placeholder in module text to replace later once
             //module is fetched.
-            modifiedText = '/*IMPORTSTAR:' + stringLiteralName + '*/';
+            modifiedText = '/ *IMPORTSTAR:' + stringLiteralName + '* /';
         } else {
             for (i = 0; (part = parts[i]); i++) {
                 colonParts = part.split(':');
@@ -240,7 +225,13 @@ define(['esprima'], function (esprima) {
             text: modifiedText
         };
     }
+*/
 
+    function transpile(text, target, replacement) {
+        return text.substring(0, target.start) +
+               replacement +
+               text.substring(target.end, text.length);
+    }
 
     function compile(path, text) {
         var stars = [],
@@ -250,17 +241,21 @@ define(['esprima'], function (esprima) {
             currentIndex = 0,
             //Remove comments from the text to be scanned
             scanText = text.replace(commentRegExp, ""),
-            transformInputText, transformedText,
-            startIndex, segmentIndex, match, tempText, transformed;
-
-
+            transformedText = text,
+            transformInputText,
+            startIndex,
+            segmentIndex,
+            match,
+            tempText,
+            transformed,
+            tokens;
 
         try {
             tokens = esprima.parse(text, {
-                    tokens: true,
-                    range: true
-                }).tokens;
-        } catch(e) {
+                tokens: true,
+                range: true
+            }).tokens;
+        } catch (e) {
             throw new Error('Esprima cannot parse: ' + path + ': ' + e);
         }
 
@@ -295,22 +290,31 @@ define(['esprima'], function (esprima) {
             }
         });
 
-        //Now sort all the targets, but by start position
-        targs.sort(function (a, b) {
-            return a.start < b.start ? -1 : 1;
+        //Now sort all the targets, but by start position, with the
+        //furthest start position first, since we need to transpile
+        //in reverse order.
+        targets.sort(function (a, b) {
+            return a.start > b.start ? -1 : 1;
         });
 
         //Now walk backwards through targets and do source modifications
         //to AMD. Going backwards is important since the modifications will
         //modify the length of the string.
-        eachRevers(targets, function (target, i) {
+        each(targets, function (target, i) {
             if (target.type === 'export') {
-                //TODO
+                if (target.subType === 'function') {
+                    transformedText = transpile(transformedText, target, 'exports.' +
+                                                    target.functionName +
+                                                    ' = function ');
+                } else {
+                    transformedText = transpile(transformedText, target, 'exports.');
+                }
             }
         });
 
 
 
+/*
 
         //Reset regexp to beginning of file.
         importModuleRegExp.lastIndex = 0;
@@ -384,6 +388,7 @@ define(['esprima'], function (esprima) {
 
         //?? export x (not with var or named function) means setting export
         //value for whole module?
+ */
 
         console.log("INPUT:\n" + text + "\n\nTRANSFORMED:\n" + transformedText);
         return {
@@ -431,7 +436,8 @@ define(['esprima'], function (esprima) {
                         var i, star, mod, starText, prop;
 
                         //Now fix up the import * items for each module.
-                        for (i = 0; (star = result.stars[i]); i++) {
+                        for (i = 0; i < result.stars.length; i++) {
+                            star = result.stars[i];
                             starText = '';
                             mod = arguments[i];
                             for (prop in mod) {
