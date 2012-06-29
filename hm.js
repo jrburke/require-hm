@@ -1,14 +1,46 @@
 /**
- * @license hm 0.1.0 Copyright (c) 2010-2011, The Dojo Foundation All Rights Reserved.
+ * @license hm 0.2.0pre Copyright (c) 2010-2011, The Dojo Foundation All Rights Reserved.
  * Available via the MIT or new BSD license.
  * see: http://github.com/jrburke/require-hm for details
  */
 
-/*jslint strict: false, plusplus: false, regexp: false */
+/*jslint */
 /*global require: false, XMLHttpRequest: false, ActiveXObject: false,
   define: false, process: false, window: false */
 
-(function () {
+define(['esprima'], function (esprima) {
+    'use strict';
+
+    /**
+     * Helper function for iterating over an array. If the func returns
+     * a true value, it will break out of the loop.
+     */
+    function each(ary, func) {
+        if (ary) {
+            var i;
+            for (i = 0; i < ary.length; i += 1) {
+                if (ary[i] && func(ary[i], i, ary)) {
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
+     * Helper function for iterating over an array backwards. If the func
+     * returns a true value, it will break out of the loop.
+     */
+    function eachReverse(ary, func) {
+        if (ary) {
+            var i;
+            for (i = ary.length - 1; i > -1; i -= 1) {
+                if (ary[i] && func(ary[i], i, ary)) {
+                    break;
+                }
+            }
+        }
+    }
+
 
     var fs, getXhr,
         progIds = ['Msxml2.XMLHTTP', 'Microsoft.XMLHTTP', 'Msxml2.XMLHTTP.4.0'],
@@ -116,7 +148,9 @@
             stars = [],
             hasQuotes = quoteRegExp.test(moduleName),
             stringLiteralName = hasQuotes ? moduleName : moduleMap[moduleName],
-            colonParts, i, part;
+            colonParts,
+            i,
+            part;
 
         stringLiteralName = stringLiteralName.substring(1, stringLiteralName.length - 1);
 
@@ -208,15 +242,75 @@
     }
 
 
-    function compile(text, config) {
+    function compile(path, text) {
         var stars = [],
             moduleMap = {},
             transforms = {},
+            targets = [],
             currentIndex = 0,
             //Remove comments from the text to be scanned
             scanText = text.replace(commentRegExp, ""),
             transformInputText, transformedText,
             startIndex, segmentIndex, match, tempText, transformed;
+
+
+
+        try {
+            tokens = esprima.parse(text, {
+                    tokens: true,
+                    range: true
+                }).tokens;
+        } catch(e) {
+            throw new Error('Esprima cannot parse: ' + path + ': ' + e);
+        }
+
+
+        each(tokens, function (token, i) {
+            var next, next2;
+
+            if (token.type === 'Keyword' && token.value === 'export') {
+                next = tokens[i + 1];
+                next2 = tokens[i + 2];
+                if (next.type === 'Keyword') {
+                    if (next.value === 'var' || next.value === 'let') {
+                        targets.push({
+                            start: token.range[0],
+                            end: next.range[1],
+                            type: 'export',
+                            subType: next.value
+                        });
+                    } else if (next.value === 'function' && next2.type === 'Identifier') {
+                        targets.push({
+                            start: token.range[0],
+                            end: next2.range[1],
+                            type: 'export',
+                            subType: 'function',
+                            functionName: next2.value
+                        });
+                    } else {
+                        throw new Error('Invalid export: ' + token.value +
+                                        ' ' + next.value + ' ' + tokens[i + 2]);
+                    }
+                }
+            }
+        });
+
+        //Now sort all the targets, but by start position
+        targs.sort(function (a, b) {
+            return a.start < b.start ? -1 : 1;
+        });
+
+        //Now walk backwards through targets and do source modifications
+        //to AMD. Going backwards is important since the modifications will
+        //modify the length of the string.
+        eachRevers(targets, function (target, i) {
+            if (target.type === 'export') {
+                //TODO
+            }
+        });
+
+
+
 
         //Reset regexp to beginning of file.
         importModuleRegExp.lastIndex = 0;
@@ -311,13 +405,13 @@
         });
     }
 
-    define({
-        version: '0.1.0',
+    return {
+        version: '0.2.0pre',
 
         load: function (name, require, load, config) {
             var path = require.toUrl(name + '.hm');
             fetchText(path, function (text) {
-                var result = compile(text, config.hm);
+                var result = compile(path, text);
                 //Do initial transforms.
                 text = result.text;
 
@@ -359,5 +453,5 @@
                 }
             });
         }
-    });
-}());
+    };
+});
