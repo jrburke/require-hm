@@ -1,7 +1,7 @@
 /**
- * @license RequireJS Copyright (c) 2010-2011, The Dojo Foundation All Rights Reserved.
+ * @license require-hm Copyright (c) 2012, The Dojo Foundation All Rights Reserved.
  * Available via the MIT or new BSD license.
- * see: http://github.com/jrburke/requirejs for details
+ * see: http://github.com/jrburke/require-hm for details
  */
 
 /**
@@ -23,8 +23,8 @@ var skipDohSetup = true,
     } else if (typeof process !== 'undefined') {
         env = 'node';
 
-        fs = require('fs');
-        vm = require('vm');
+        fs = require.nodeRequire('fs');
+        vm = require.nodeRequire('vm');
 
         load = function (path) {
             return vm.runInThisContext(require.makeNodeWrapper(fs.readFileSync(path, 'utf8'), path));
@@ -38,16 +38,10 @@ var skipDohSetup = true,
 //Load the tests.
 load("doh/runner.js");
 load('doh/_' + env + 'Runner.js');
-load("simple-tests.js");
-load("circular-tests.js");
-load("relative/relative-tests.js");
-load("exports/exports-tests.js");
-load("exports/moduleAndExports-tests.js");
-load("anon/anon-tests.js");
-load("packages/packages-tests.js");
-load("plugins/sync-tests.js");
-load("plugins/fromText/fromText-tests.js");
-load("defineError/defineError-tests.js");
+load('export/export-tests.js');
+load('module/module-tests.js');
+load('import/import-tests.js');
+load('import/importstar-tests.js');
 
 //Print out the final report
 doh.run();

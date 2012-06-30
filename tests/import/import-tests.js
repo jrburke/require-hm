@@ -1,4 +1,5 @@
 require({
+    baseUrl: require.isBrowser ? '.' : 'import',
     paths: {
         hm: '../../hm',
         esprima: '../../esprima'

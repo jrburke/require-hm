@@ -107,3 +107,17 @@ require(['hm!main'], function (main) {
     console.log('main: ' + main);
 });
 ```
+
+## Running Tests
+
+### In Browser
+
+Open `tests/index.html` in a browser. Serve the tests from a web site,
+since XMLHttpRequest (XHR) is used to fetch .hm, and some browsers have security
+restrictions when using XHR from file:// URLs.
+
+### In Node
+
+From within the `tests` directory:
+
+    node ../tools/r.js all-node.js

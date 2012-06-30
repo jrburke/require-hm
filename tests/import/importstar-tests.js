@@ -1,11 +1,12 @@
 require({
+    baseUrl: require.isBrowser ? '.' : 'import',
     paths: {
         hm: '../../hm',
         esprima: '../../esprima'
     },
     config: {
         hm: {
-            logTransform: true
+            logTransform: require.isBrowser
         }
     }
 });
