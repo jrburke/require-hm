@@ -26,6 +26,22 @@ define(['esprima'], function (esprima) {
         }
     }
 
+    /**
+     * Cycles over properties in an object and calls a function for each
+     * property value. If the function returns a truthy value, then the
+     * iteration is stopped.
+     */
+    function eachProp(obj, func) {
+        var prop;
+        for (prop in obj) {
+            if (obj.hasOwnProperty(prop)) {
+                if (func(obj[prop], prop)) {
+                    break;
+                }
+            }
+        }
+    }
+
     var fs, getXhr,
         progIds = ['Msxml2.XMLHTTP', 'Microsoft.XMLHTTP', 'Msxml2.XMLHTTP.4.0'],
 
@@ -240,7 +256,7 @@ define(['esprima'], function (esprima) {
             //import y from x
             replacement += 'var ' + token.value + ' = ' +
                             moduleTarget + '.' + token.value + ';';
-        } else if (token.type === 'Identifier' && token.value === '{') {
+        } else if (token.type === 'Punctuator' && token.value === '{') {
             cursor += 1;
             token = tokens[cursor];
             while (cursor !== end && token.value !== '}') {
@@ -267,12 +283,17 @@ define(['esprima'], function (esprima) {
             }
 
             //Now serialize the localVars
-
+            eachProp(localVars, function (localName, importProp) {
+                replacement += 'var ' + localName + ' = ' +
+                                moduleTarget + '.' + importProp + ';\n';
+            });
         } else {
             throw new Error('Invalid import: import ' +
                 token.value + ' ' + tokens[start + 1].value +
                 ' ' + tokens[start + 2].value);
         }
+
+        return replacement;
     }
 
     function convertModuleSyntax(tokens, i) {
@@ -394,25 +415,25 @@ define(['esprima'], function (esprima) {
                 cursor = i;
                 //Find the "from" in the statement
                 while (tokens[cursor] &&
-                        tokens[cursor].type !== 'Keyword' &&
-                        tokens[cursor].value !== 'from') {
+                        (tokens[cursor].type !== 'Identifier' ||
+                        tokens[cursor].value !== 'from')) {
                     cursor += 1;
                 }
 
                 //Increase cursor one more value to find the module target
-                moduleTarget = tokens[cursor + 1];
+                moduleTarget = tokens[cursor + 1].value;
 
                 //Convert module target to an AMD usable name. If a string,
                 //then needs to be accessed via require()
                 moduleTarget = startQuoteRegExp.test(moduleTarget) ?
                                 'require(' + moduleTarget + ')' :
                                 moduleTarget;
-                replacement = convertImportSyntax(tokens, i, cursor - 1, moduleTarget);
+                replacement = convertImportSyntax(tokens, i + 1, cursor - 1, moduleTarget);
 
-                target.push({
+                targets.push({
                     type: 'import',
                     start: token.range[0],
-                    end: tokens[cursor + 2].range[0],
+                    end: tokens[cursor + 3].range[0],
                     replacement: replacement
                 });
             }

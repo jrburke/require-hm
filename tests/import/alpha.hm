@@ -1,8 +1,8 @@
 
 module gamma = 'gamma';
 
-import { name: gammaName } from gamma,
-       { name: betaName, func: betaFunc, uniqueBeta } from 'beta';
+import { name: gammaName } from gamma;
+import { name: betaName, func: betaFunc, uniqueBeta } from 'beta';
 
 export gammaName;
 
