@@ -312,12 +312,6 @@ define(['esprima'], function (esprima) {
         }
     }
 
-    function transpile(text, target, replacement) {
-        return text.substring(0, target.start) +
-               replacement +
-               text.substring(target.end, text.length);
-    }
-
     function compile(path, text) {
         var stars = [],
             moduleMap = {},
@@ -360,34 +354,42 @@ define(['esprima'], function (esprima) {
 
             if (token.value === 'export') {
                 // EXPORTS
+                //
                 if (next.type === 'Keyword') {
                     if (next.value === 'var' || next.value === 'let') {
                         targets.push({
                             start: token.range[0],
                             end: next2.range[0],
-                            type: 'export',
-                            subType: next.value
+                            replacement: 'exports.'
                         });
                     } else if (next.value === 'function' && next2.type === 'Identifier') {
                         targets.push({
                             start: token.range[0],
                             end: next2.range[1],
-                            type: 'export',
-                            subType: 'function',
-                            functionName: next2.value
+                            replacement: 'exports.' + next2.value +
+                                         ' = function '
                         });
                     } else {
                         throw new Error('Invalid export: ' + token.value +
                                         ' ' + next.value + ' ' + tokens[i + 2]);
                     }
+                } else if (next.type === 'Identifier') {
+                    targets.push({
+                        start: token.range[0],
+                        end: next.range[1],
+                        replacement: 'exports.' + next.value +
+                                     ' = ' + next.value
+                    });
+                } else {
+                    throw new Error('Invalid export: ' + token.value +
+                                        ' ' + next.value + ' ' + tokens[i + 2]);
                 }
             } else if (token.value === 'module') {
                 // MODULE
                 // module Bar = "bar.js";
                 replacement = 'var ';
                 target = {
-                    start: token.range[0],
-                    type: 'module'
+                    start: token.range[0]
                 };
 
                 while (token.value === 'module' || (token.type === 'Punctuator'
@@ -410,10 +412,13 @@ define(['esprima'], function (esprima) {
                 targets.push(target);
             } else if (token.value === 'import') {
                 // IMPORT
-                //import * from Bar;
-
+                //import * from z;
+                //import y from z;
+                //import {y} from z;
+                //import {x, y} from z;
+                //import {x: localX, y: localY} from z;
                 cursor = i;
-                //Find the "from" in the statement
+                //Find the "from" in the stream
                 while (tokens[cursor] &&
                         (tokens[cursor].type !== 'Identifier' ||
                         tokens[cursor].value !== 'from')) {
@@ -426,12 +431,11 @@ define(['esprima'], function (esprima) {
                 //Convert module target to an AMD usable name. If a string,
                 //then needs to be accessed via require()
                 moduleTarget = startQuoteRegExp.test(moduleTarget) ?
-                                'require(' + moduleTarget + ')' :
+                                'require("' + cleanModuleId(moduleTarget) + '")' :
                                 moduleTarget;
                 replacement = convertImportSyntax(tokens, i + 1, cursor - 1, moduleTarget);
 
                 targets.push({
-                    type: 'import',
                     start: token.range[0],
                     end: tokens[cursor + 3].range[0],
                     replacement: replacement
@@ -450,19 +454,10 @@ define(['esprima'], function (esprima) {
         //to AMD. Going backwards is important since the modifications will
         //modify the length of the string.
         each(targets, function (target, i) {
-            if (target.type === 'export') {
-                if (target.subType === 'function') {
-                    transformedText = transpile(transformedText, target, 'exports.' +
-                                                    target.functionName +
-                                                    ' = function ');
-                } else {
-                    transformedText = transpile(transformedText, target, 'exports.');
-                }
-            } else if (target.type === 'module' || target.type === 'import') {
-                transformedText = transpile(transformedText, target, target.replacement);
-            }
+            transformedText = transformedText.substring(0, target.start) +
+                              target.replacement +
+                              transformedText.substring(target.end, transformedText.length);
         });
-
 
 
 /*
