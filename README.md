@@ -66,7 +66,14 @@ is sufficient:
 
 Circular references that do import * on each other will not work.
 
-3) Using identifiers for "inline modules" is not supported:
+3) import * does not work in build
+
+Using r.js to optimize a set of hm modules to a concatenated list of AMD
+modules works for everything except import *, since the build does not actually
+run the * module as part of the build, since it may accesss environment-specific
+information, like `window` or `navigator` which do not exist in Node.
+
+4) Using identifiers for "inline modules" is not supported:
 
     module Bar {}
 
@@ -107,6 +114,18 @@ require(['hm!main'], function (main) {
     console.log('main: ' + main);
 });
 ```
+
+## Doing Builds
+
+See `tests/build` for example build files (the X.build.js files).
+
+The AMD version of the modules are placed in the built file, so the `hm` and
+`esprima` modules do not need to be included in the build file.
+
+See the build files for more details.
+
+If any .hm files will be loaded dynamically after a build, then the source
+versions of `hm` and `esprima` should stay in the build.
 
 ## Running Tests
 

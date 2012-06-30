@@ -40,12 +40,12 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
 
 (function (factory) {
     'use strict';
-    if (typeof exports !== 'undefined') {
-        // Node/CommonJS
-        factory(exports);
-    } else if (typeof define === 'function' && define.amd) {
+    if (typeof define === 'function' && define.amd) {
         // AMD
         define(['exports'], factory);
+    } else if (typeof exports !== 'undefined') {
+        // Node/CommonJS
+        factory(exports);
     } else {
         // Browser globals
         factory((esprima = {}));
