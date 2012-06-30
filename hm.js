@@ -8,39 +8,8 @@
 /*global require, XMLHttpRequest, ActiveXObject, define, process, window,
 console */
 
-define(['esprima'], function (esprima) {
+define(['esprima', 'module'], function (esprima, module) {
     'use strict';
-
-    /**
-     * Helper function for iterating over an array. If the func returns
-     * a true value, it will break out of the loop.
-     */
-    function each(ary, func) {
-        if (ary) {
-            var i;
-            for (i = 0; i < ary.length; i += 1) {
-                if (ary[i] && func(ary[i], i, ary)) {
-                    break;
-                }
-            }
-        }
-    }
-
-    /**
-     * Cycles over properties in an object and calls a function for each
-     * property value. If the function returns a truthy value, then the
-     * iteration is stopped.
-     */
-    function eachProp(obj, func) {
-        var prop;
-        for (prop in obj) {
-            if (obj.hasOwnProperty(prop)) {
-                if (func(obj[prop], prop)) {
-                    break;
-                }
-            }
-        }
-    }
 
     var fs, getXhr,
         progIds = ['Msxml2.XMLHTTP', 'Microsoft.XMLHTTP', 'Msxml2.XMLHTTP.4.0'],
@@ -110,6 +79,38 @@ define(['esprima'], function (esprima) {
         };
     }
 
+
+    /**
+     * Helper function for iterating over an array. If the func returns
+     * a true value, it will break out of the loop.
+     */
+    function each(ary, func) {
+        if (ary) {
+            var i;
+            for (i = 0; i < ary.length; i += 1) {
+                if (ary[i] && func(ary[i], i, ary)) {
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
+     * Cycles over properties in an object and calls a function for each
+     * property value. If the function returns a truthy value, then the
+     * iteration is stopped.
+     */
+    function eachProp(obj, func) {
+        var prop;
+        for (prop in obj) {
+            if (obj.hasOwnProperty(prop)) {
+                if (func(obj[prop], prop)) {
+                    break;
+                }
+            }
+        }
+    }
+
     /**
      * Inserts the hm! loader plugin prefix if necessary. If
      * there is already a ! in the string, then leave it be, and if it
@@ -133,130 +134,44 @@ define(['esprima'], function (esprima) {
         return id;
     }
 
-    /**
-     * Expands things like
-     * import { draw: drawShape } from shape
-     * to be variable assignments.
-     */
-/*
-    function expandImportRefs(moduleMap, text, moduleName) {
-        //Strip off the curly braces
-        text = text.replace(braceRegExp, '');
-
-        //Split by commas
-        var parts = text.split(','),
-            modifiedText = '',
-            stars = [],
-            hasQuotes = quoteRegExp.test(moduleName),
-            stringLiteralName = hasQuotes ? moduleName : moduleMap[moduleName],
-            colonParts,
-            i,
-            part;
-
-        stringLiteralName = stringLiteralName.substring(1, stringLiteralName.length - 1);
-
-        if (parts[0] === '*') {
-            //Strip the quotes from the string name and put it in the stars
-            stars.push(stringLiteralName);
-
-            //Put in placeholder in module text to replace later once
-            //module is fetched.
-            modifiedText = '/ *IMPORTSTAR:' + stringLiteralName + '* /';
-        } else {
-            for (i = 0; (part = parts[i]); i++) {
-                colonParts = part.split(':');
-
-                //Normalize foo to be foo:foo
-                colonParts[1] = colonParts[1] || colonParts[0];
-
-                modifiedText += 'var ' + colonParts[1] + ' = ' +
-                    (hasQuotes ? 'require(' + moduleName + ')' : moduleName) +
-                    '.' + colonParts[0] + ';';
-            }
-        }
-
-        return {
-            stars: stars,
-            text: modifiedText
-        };
-    }
-
-    function transformText(moduleMap, type, text) {
-        //Strip off the "module" or "import"
-        text = text.substring(type.length, text.length);
-
-        var modifiedText = '',
-            spaceParts = text.split(spaceRegExp),
-            stars = [],
-            i, j, varName, moduleName, fromIndex, firstChar, propRefs, imports;
-
-        //First find the "from" part.
-        for (i = 0; i < spaceParts.length; i++) {
-            if (spaceParts[i] === 'from') {
-                fromIndex = i;
-
-                //Only handle the foo from 'foo', not module foo {}
-                if (type === 'module') {
-                    if (fromIndex > 0) {
-                        varName = spaceParts[fromIndex - 1];
-                        moduleName = cleanModuleName(spaceParts[fromIndex + 1]);
-                        modifiedText += 'var ' + varName + ' = ' + 'require(' + moduleName + ');\n';
-                        moduleMap[varName] = moduleName;
-                    }
-                } else if (type === 'import') {
-                    if (fromIndex > 0) {
-                        //Clean up the module name, if a string, do a require() around it.
-                        moduleName = spaceParts[fromIndex + 1];
-                        if (quoteRegExp.test(moduleName)) {
-                            moduleName = cleanModuleName(moduleName);
-                        } else {
-                            // Strip off any trailing punctuation
-                            moduleName = moduleName.replace(endingPuncRegExp, '');
-                        }
-
-                        //Find the staring brace or * for the start of the import
-                        propRefs = '';
-                        for (j = fromIndex - 1; j >= 0; j--) {
-                            firstChar = spaceParts[j].charAt(0);
-                            if (firstChar === '{' || firstChar === '*') {
-                                //Property refs.
-                                propRefs = spaceParts.slice(j, fromIndex).join('');
-                                imports = expandImportRefs(moduleMap, propRefs, moduleName);
-                                if (imports.stars && imports.stars.length) {
-                                    stars = stars.concat(imports.stars);
-                                }
-                                modifiedText += imports.text;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        //console.log('TEXT: ' + text + '\nMODIFIED: ' + modifiedText);
-
-        return {
-            stars: stars,
-            text: modifiedText
-        };
-    }
-*/
-
     function convertImportSyntax(tokens, start, end, moduleTarget) {
         var token = tokens[start],
             cursor = start,
             replacement = '',
             localVars = {},
+            moduleRef,
+            moduleId,
+            star,
             currentVar;
 
+        //Convert module target to an AMD usable name. If a string,
+        //then needs to be accessed via require()
+        if (startQuoteRegExp.test(moduleTarget)) {
+            moduleId = cleanModuleId(moduleTarget);
+            moduleRef = 'require("' + moduleId + '")';
+        } else {
+            moduleRef = moduleTarget;
+        }
+
         if (token.type === 'Punctuator' && token.value === '*') {
-            //import * from x
+            //import * from z
+            //If not using a module ID that is a require call, then
+            //discard it.
+            if (moduleId) {
+                star = moduleId;
+                replacement = '/*IMPORTSTAR:' + star + '*/\n';
+            } else {
+                throw new Error('import * on local reference ' + moduleTarget +
+                                ' no supported.');
+            }
         } else if (token.type === 'Identifier') {
-            //import y from x
+            //import y from z
             replacement += 'var ' + token.value + ' = ' +
-                            moduleTarget + '.' + token.value + ';';
+                            moduleRef + '.' + token.value + ';';
         } else if (token.type === 'Punctuator' && token.value === '{') {
+            //import {y} from z
+            //import {x, y} from z
+            //import {x: localX, y: localY} from z
             cursor += 1;
             token = tokens[cursor];
             while (cursor !== end && token.value !== '}') {
@@ -285,7 +200,7 @@ define(['esprima'], function (esprima) {
             //Now serialize the localVars
             eachProp(localVars, function (localName, importProp) {
                 replacement += 'var ' + localName + ' = ' +
-                                moduleTarget + '.' + importProp + ';\n';
+                                moduleRef + '.' + importProp + ';\n';
             });
         } else {
             throw new Error('Invalid import: import ' +
@@ -293,7 +208,10 @@ define(['esprima'], function (esprima) {
                 ' ' + tokens[start + 2].value);
         }
 
-        return replacement;
+        return {
+            star: star,
+            replacement: replacement
+        };
     }
 
     function convertModuleSyntax(tokens, i) {
@@ -350,11 +268,11 @@ define(['esprima'], function (esprima) {
                 cursor = i,
                 replacement,
                 moduleTarget,
-                target;
+                target,
+                convertedImport;
 
             if (token.value === 'export') {
                 // EXPORTS
-                //
                 if (next.type === 'Keyword') {
                     if (next.value === 'var' || next.value === 'let') {
                         targets.push({
@@ -427,13 +345,11 @@ define(['esprima'], function (esprima) {
 
                 //Increase cursor one more value to find the module target
                 moduleTarget = tokens[cursor + 1].value;
-
-                //Convert module target to an AMD usable name. If a string,
-                //then needs to be accessed via require()
-                moduleTarget = startQuoteRegExp.test(moduleTarget) ?
-                                'require("' + cleanModuleId(moduleTarget) + '")' :
-                                moduleTarget;
-                replacement = convertImportSyntax(tokens, i + 1, cursor - 1, moduleTarget);
+                convertedImport = convertImportSyntax(tokens, i + 1, cursor - 1, moduleTarget);
+                replacement = convertedImport.replacement;
+                if (convertedImport.star) {
+                    stars.push(convertedImport.star);
+                }
 
                 targets.push({
                     start: token.range[0],
@@ -459,84 +375,6 @@ define(['esprima'], function (esprima) {
                               transformedText.substring(target.end, transformedText.length);
         });
 
-
-/*
-
-        //Reset regexp to beginning of file.
-        importModuleRegExp.lastIndex = 0;
-
-        while ((match = importModuleRegExp.exec(scanText))) {
-            //Just make the match the module or import string.
-            match = match[0];
-
-            startIndex = segmentIndex = importModuleRegExp.lastIndex - match.length;
-
-            while (true) {
-                //Find the end of the current set of statements.
-                segmentIndex = scanText.indexOf('\n', segmentIndex);
-                if (segmentIndex === -1) {
-                    //End of the file. Consume it all.
-                    segmentIndex = scanText.length - 1;
-                    break;
-                } else {
-                    //Grab the \n in the match.
-                    segmentIndex += 1;
-
-                    tempText = scanText.substring(startIndex, segmentIndex);
-
-                    //If the tempText ends with a ,[whitespace], then there
-                    //is still more to capture.
-                    if (!commaRegExp.test(tempText)) {
-                        break;
-                    }
-                }
-            }
-
-
-            transformInputText = scanText.substring(startIndex, segmentIndex);
-            if (!transforms[transformInputText]) {
-                transformed = transformText(moduleMap, match, transformInputText);
-                transforms[transformInputText] = transformed.text;
-
-                if (transformed.stars && transformed.stars.length) {
-                    stars = stars.concat(transformed.stars);
-                }
-            }
-
-            importModuleRegExp.lastIndex = currentIndex = segmentIndex;
-        }
-
-        //Apply the text transforms
-        transformedText = text;
-        for (transformInputText in transforms) {
-            if (transforms.hasOwnProperty(transformInputText)) {
-                transformedText = transformedText.replace(transformInputText, transforms[transformInputText]);
-            }
-        }
-
-        //Convert export calls. Supported:
-        //export var foo -> exports.foo
-        //export function foo(){} -> exports.foo = function(){}
-        //export varName -> exports.varName = varName
-        transformedText = transformedText.replace(exportRegExp, function (match, varOrFunc, spacePlusName, name) {
-            if (!name) {
-                //exposing a local variable as an export value, where
-                //its value was assigned before the export call.
-                return 'exports.' + varOrFunc + ' = ' + varOrFunc;
-            } else if (varOrFunc === 'var') {
-                return 'exports.' + name;
-            } else if (varOrFunc === 'function') {
-                return 'exports.' + name + ' = function ' + name;
-            } else {
-                return match;
-            }
-        });
-
-        //?? export x (not with var or named function) means setting export
-        //value for whole module?
- */
-
-        console.log("INPUT:\n" + text + "\n\nTRANSFORMED:\n" + transformedText);
         return {
             text: "define(function (require, exports, module) {\n" +
                   transformedText +
@@ -545,8 +383,12 @@ define(['esprima'], function (esprima) {
         };
     }
 
-    function finishLoad(require, load, name, text) {
-        load.fromText(name, text);
+    function finishLoad(require, load, name, transformedText, text) {
+        load.fromText(name, transformedText);
+
+        if (module.config().logTransform) {
+            console.log("INPUT:\n" + text + "\n\nTRANSFORMED:\n" + transformedText);
+        }
 
         //Give result to load. Need to wait until the module
         //is fully parsed, which will happen after this
@@ -562,15 +404,14 @@ define(['esprima'], function (esprima) {
         load: function (name, require, load, config) {
             var path = require.toUrl(name + '.hm');
             fetchText(path, function (text) {
-                var result = compile(path, text);
-                //Do initial transforms.
-                text = result.text;
+                var result = compile(path, text),
+                    transformedText = result.text;
 
                 //IE with conditional comments on cannot handle the
                 //sourceURL trick, so skip it if enabled.
                 /*@if (@_jscript) @else @*/
                 if (!config.isBuild) {
-                    text += "\r\n//@ sourceURL=" + path;
+                    transformedText += "\r\n//@ sourceURL=" + path;
                 }
                 /*@end@*/
 
@@ -591,17 +432,13 @@ define(['esprima'], function (esprima) {
                                     starText += 'var ' + prop + ' = require("' + star + '").' + prop + '; ';
                                 }
                             }
-                            text = text.replace('/*IMPORTSTAR:' + star + '*/', starText);
+                            transformedText = transformedText.replace('/*IMPORTSTAR:' + star + '*/', starText);
                         }
 
-                        //console.log("FINAL TEXT:\n" + text);
-
-                        finishLoad(require, load, name, text);
+                        finishLoad(require, load, name, transformedText, text);
                     });
-
-
                 } else {
-                    finishLoad(require, load, name, text);
+                    finishLoad(require, load, name, transformedText, text);
                 }
             });
         }

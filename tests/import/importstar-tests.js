@@ -2,6 +2,11 @@ require({
     paths: {
         hm: '../../hm',
         esprima: '../../esprima'
+    },
+    config: {
+        hm: {
+            logTransform: true
+        }
     }
 });
 

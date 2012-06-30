@@ -62,7 +62,11 @@ is sufficient:
     //This is not supported:
     import "Bar.js" as Bar;
 
-2) Using identifiers for "inline modules" is not supported:
+2) cyclical import * not supported.
+
+Circular references that do import * on each other will not work.
+
+3) Using identifiers for "inline modules" is not supported:
 
     module Bar {}
 
@@ -72,3 +76,34 @@ modules are combined in a build:
 
     module 'Bar' {}
 
+## Installing
+
+Grab the following files in this repo:
+
+* hm.js
+* esprima.js
+
+## Configuration
+
+You can pass the following configuration options to the loader plugin
+via the requirejs
+[the module config](http://requirejs.org/docs/api.html#config-moduleconfig):
+
+```javascript
+requirejs.config({
+    config: {
+        hm: {
+            //Will log to console the before and
+            //after text.
+            logTransform: true
+        }
+    }
+});
+
+//Now start loading harmony modules
+//This load main.hm, transpiles it to AMD
+//then executes.
+require(['hm!main'], function (main) {
+    console.log('main: ' + main);
+});
+```
