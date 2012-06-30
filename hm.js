@@ -24,6 +24,7 @@ define(['esprima', 'module'], function (esprima, module) {
         moduleNameRegExp = /['"]([^'"]+)['"]/,
         startQuoteRegExp = /^['"]/,
         braceRegExp = /[\{\}]/g,
+        buildMap = {},
 
         fetchText = function () {
             throw new Error('Environment unsupported.');
@@ -383,7 +384,12 @@ define(['esprima', 'module'], function (esprima, module) {
         };
     }
 
-    function finishLoad(require, load, name, transformedText, text) {
+    function finishLoad(require, load, name, transformedText, text, isBuild) {
+        //Hold on to the transformed text if a build.
+        if (isBuild) {
+            buildMap[name] = transformedText;
+        }
+
         load.fromText(name, transformedText);
 
         if (module.config().logTransform) {
@@ -400,6 +406,13 @@ define(['esprima', 'module'], function (esprima, module) {
 
     return {
         version: '0.2.0pre',
+
+        write: function (pluginName, name, write) {
+            if (buildMap.hasOwnProperty(name)) {
+                var text = buildMap[name];
+                write.asModule(pluginName + "!" + name, text);
+            }
+        },
 
         load: function (name, require, load, config) {
             var path = require.toUrl(name + '.hm');
@@ -435,10 +448,10 @@ define(['esprima', 'module'], function (esprima, module) {
                             transformedText = transformedText.replace('/*IMPORTSTAR:' + star + '*/', starText);
                         }
 
-                        finishLoad(require, load, name, transformedText, text);
+                        finishLoad(require, load, name, transformedText, text, config.isBuild);
                     });
                 } else {
-                    finishLoad(require, load, name, transformedText, text);
+                    finishLoad(require, load, name, transformedText, text, config.isBuild);
                 }
             });
         }
