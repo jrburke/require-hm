@@ -117,7 +117,7 @@ require(['hm!main'], function (main) {
 
 ## Doing Builds
 
-See `tests/build` for example build files (the X.build.js files).
+See `tests/build` for example build files (the *.build.js files).
 
 The AMD version of the modules are placed in the built file, so the `hm` and
 `esprima` modules do not need to be included in the build file.
