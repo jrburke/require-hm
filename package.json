@@ -1,9 +1,9 @@
 {
     "name": "require-hm",
     "volo": {
-        "url": "https://raw.github.com/jrburke/require-hm/{version}/hm.js"
+        "url": "https://raw.github.com/jrburke/require-hm/{version}/hm.js",
         "dependencies": {
-            "esprima": "esprima"
+            "esprima": "https://raw.github.com/jrburke/require-hm/{version}/esprima.js"
         }
     }
 }
