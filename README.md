@@ -90,9 +90,16 @@ Grab the following files in this repo:
 * [hm.js](https://raw.github.com/jrburke/require-hm/latest/hm.js)
 * [esprima.js](https://raw.github.com/jrburke/require-hm/latest/esprima.js)
 
+and place them in the directory that is used as the baseUrl for your AMD-based
+project.
+
 Or use [volo](https://github.com/volojs/volo):
 
     volo add jrburke/require-hm
+
+A special, modified version of esprima is used, so be sure to use the esprima.js
+that is in this repo. A copy of esprima.js from the esprima project will not
+work.
 
 ## Configuration
 
