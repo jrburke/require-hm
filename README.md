@@ -87,8 +87,12 @@ modules are combined in a build:
 
 Grab the following files in this repo:
 
-* hm.js
-* esprima.js
+* [hm.js](https://raw.github.com/jrburke/require-hm/latest/hm.js)
+* [esprima.js](https://raw.github.com/jrburke/require-hm/latest/esprima.js)
+
+Or use [volo](https://github.com/volojs/volo):
+
+    volo add jrburke/require-hm
 
 ## Configuration
 
