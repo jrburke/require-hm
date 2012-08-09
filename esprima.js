@@ -1,3 +1,4 @@
+//https://github.com/ariya/esprima/commit/ffa1cb4c8d5002f81a13ab2a2b9f87d4e2b0b6c7
 /*
   Copyright (C) 2012 Ariya Hidayat <ariya.hidayat@gmail.com>
   Copyright (C) 2012 Mathias Bynens <mathias@qiwi.be>
@@ -29,26 +30,29 @@
 */
 
 /*jslint bitwise:true plusplus:true */
-/*global esprima:true, exports:true, define: false,
+/*global esprima:true, define:true, exports:true, window: true,
 throwError: true, createLiteral: true, generateStatement: true,
-parseAssignmentExpression: true, parseBlock: true, parseExpression: true,
+parseAssignmentExpression: true, parseBlock: true,
+parseClassExpression: true, parseClassDeclaration: true, parseExpression: true,
 parseFunctionDeclaration: true, parseFunctionExpression: true,
 parseFunctionSourceElements: true, parseVariableIdentifier: true,
 parseImportSpecifier: true,
 parseLeftHandSideExpression: true,
-parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseConciseBody: true */
+parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseConciseBody: true,
+parseYieldExpression: true
+*/
 
 (function (factory) {
     'use strict';
+
+    // Universal Module Definition (UMD) to support AMD, CommonJS/Node.js,
+    // and plain browser loading,
     if (typeof define === 'function' && define.amd) {
-        // AMD
         define(['exports'], factory);
     } else if (typeof exports !== 'undefined') {
-        // Node/CommonJS
         factory(exports);
     } else {
-        // Browser globals
-        factory((esprima = {}));
+        factory((window.esprima = {}));
     }
 }(function (exports) {
     'use strict';
@@ -61,6 +65,8 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         Regex,
         source,
         strict,
+        yieldAllowed,
+        yieldFound,
         index,
         lineNumber,
         lineStart,
@@ -91,26 +97,32 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
     TokenName[Token.StringLiteral] = 'String';
 
     Syntax = {
-        AssignmentExpression: 'AssignmentExpression',
         ArrayExpression: 'ArrayExpression',
         ArrayPattern: 'ArrayPattern',
-        BlockStatement: 'BlockStatement',
+        ArrowFunctionExpression: 'ArrowFunctionExpression',
+        AssignmentExpression: 'AssignmentExpression',
         BinaryExpression: 'BinaryExpression',
+        BlockStatement: 'BlockStatement',
         BreakStatement: 'BreakStatement',
         CallExpression: 'CallExpression',
         CatchClause: 'CatchClause',
+        ClassBody: 'ClassBody',
+        ClassDeclaration: 'ClassDeclaration',
+        ClassExpression: 'ClassExpression',
+        MethodDefinition: 'MethodDefinition',
+        ClassHeritage: 'ClassHeritage',
         ConditionalExpression: 'ConditionalExpression',
         ContinueStatement: 'ContinueStatement',
-        DoWhileStatement: 'DoWhileStatement',
         DebuggerStatement: 'DebuggerStatement',
+        DoWhileStatement: 'DoWhileStatement',
         EmptyStatement: 'EmptyStatement',
+        ExportDeclaration: 'ExportDeclaration',
         ExportSpecifier: 'ExportSpecifier',
         ExportSpecifierSet: 'ExportSpecifierSet',
-        ExportDeclaration: 'ExportDeclaration',
         ExpressionStatement: 'ExpressionStatement',
-        ForStatement: 'ForStatement',
         ForInStatement: 'ForInStatement',
         ForOfStatement: 'ForOfStatement',
+        ForStatement: 'ForStatement',
         FunctionDeclaration: 'FunctionDeclaration',
         FunctionExpression: 'FunctionExpression',
         Glob: 'Glob',
@@ -118,8 +130,8 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         IfStatement: 'IfStatement',
         ImportDeclaration: 'ImportDeclaration',
         ImportSpecifier: 'ImportSpecifier',
-        Literal: 'Literal',
         LabeledStatement: 'LabeledStatement',
+        Literal: 'Literal',
         LogicalExpression: 'LogicalExpression',
         MemberExpression: 'MemberExpression',
         ModuleDeclaration: 'ModuleDeclaration',
@@ -131,8 +143,8 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         Property: 'Property',
         ReturnStatement: 'ReturnStatement',
         SequenceExpression: 'SequenceExpression',
-        SwitchStatement: 'SwitchStatement',
         SwitchCase: 'SwitchCase',
+        SwitchStatement: 'SwitchStatement',
         ThisExpression: 'ThisExpression',
         ThrowStatement: 'ThrowStatement',
         TryStatement: 'TryStatement',
@@ -141,7 +153,8 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         VariableDeclaration: 'VariableDeclaration',
         VariableDeclarator: 'VariableDeclarator',
         WhileStatement: 'WhileStatement',
-        WithStatement: 'WithStatement'
+        WithStatement: 'WithStatement',
+        YieldExpression: 'YieldExpression'
     };
 
     PropertyKind = {
@@ -159,17 +172,18 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         UnexpectedReserved:  'Unexpected reserved word',
         UnexpectedEOS:  'Unexpected end of input',
         NewlineAfterThrow:  'Illegal newline after throw',
-        NewlineAfterModule:  'Illegal newline after module',
         InvalidRegExp: 'Invalid regular expression',
         UnterminatedRegExp:  'Invalid regular expression: missing /',
         InvalidLHSInAssignment:  'Invalid left-hand side in assignment',
         InvalidLHSInForIn:  'Invalid left-hand side in for-in',
+        MultipleDefaultsInSwitch: 'More than one default clause in switch statement',
         NoCatchOrFinally:  'Missing catch or finally after try',
         UnknownLabel: 'Undefined label \'%0\'',
         Redeclaration: '%0 \'%1\' has already been declared',
         IllegalContinue: 'Illegal continue statement',
         IllegalBreak: 'Illegal break statement',
         IllegalReturn: 'Illegal return statement',
+        IllegalYield: 'Illegal yield expression',
         StrictModeWith:  'Strict mode code may not include a with statement',
         StrictCatchVariable:  'Catch variable may not be eval or arguments in strict mode',
         StrictVarName:  'Variable name may not be eval or arguments in strict mode',
@@ -185,7 +199,8 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         StrictLHSPostfix:  'Postfix increment/decrement may not have eval or arguments operand in strict mode',
         StrictLHSPrefix:  'Prefix increment/decrement may not have eval or arguments operand in strict mode',
         StrictReservedWord:  'Use of future reserved word in strict mode',
-        NoFromAfterImport: 'Missing from after import'
+        NoFromAfterImport: 'Missing from after import',
+        NoYieldInGenerator: 'Missing yield in generator'
     };
 
     // See also tools/generate-unicode-regex.py.
@@ -350,11 +365,6 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
             return true;
         }
 
-        // Harmony
-        if (id === 'module') {
-            return true;
-        }
-
         return isFutureReservedWord(id);
     }
 
@@ -451,6 +461,38 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
             }
         }
         return String.fromCharCode(code);
+    }
+
+    function scanUnicodeCodePointEscape() {
+        var ch, code, cu1, cu2;
+
+        ch = source[index];
+        code = 0;
+
+        // At least, one hex digit is required.
+        if (ch === '}') {
+            throwError({}, Messages.UnexpectedToken, 'ILLEGAL');
+        }
+
+        while (index < length) {
+            ch = nextChar();
+            if (!isHexDigit(ch)) {
+                break;
+            }
+            code = code * 16 + '0123456789abcdef'.indexOf(ch.toLowerCase());
+        }
+
+        if (code > 0x10FFFF || ch !== '}') {
+            throwError({}, Messages.UnexpectedToken, 'ILLEGAL');
+        }
+
+        // UTF-16 Encoding
+        if (code <= 0xFFFF) {
+            return String.fromCharCode(code);
+        }
+        cu1 = ((code - 0x10000) >> 10) + 0xD800;
+        cu2 = ((code - 0x10000) & 1023) + 0xDC00;
+        return String.fromCharCode(cu1, cu2);
     }
 
     function scanIdentifier() {
@@ -718,6 +760,17 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
             }
         }
 
+        if (ch1 === '=' && ch2 === '>') {
+            index += 2;
+            return {
+                type: Token.Punctuator,
+                value: '=>',
+                lineNumber: lineNumber,
+                lineStart: lineStart,
+                range: [start, index]
+            };
+        }
+
         // The remaining 1-character punctuators.
 
         if ('[]<>+-*%&|^!~?:=/'.indexOf(ch1) >= 0) {
@@ -951,13 +1004,18 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
                         break;
                     case 'u':
                     case 'x':
-                        restore = index;
-                        unescaped = scanHexEscape(ch);
-                        if (unescaped) {
-                            str += unescaped;
+                        if (source[index] === '{') {
+                            ++index;
+                            str += scanUnicodeCodePointEscape();
                         } else {
-                            index = restore;
-                            str += ch;
+                            restore = index;
+                            unescaped = scanHexEscape(ch);
+                            if (unescaped) {
+                                str += unescaped;
+                            } else {
+                                index = restore;
+                                str += ch;
+                            }
                         }
                         break;
                     case 'b':
@@ -1192,6 +1250,33 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         return buffer;
     }
 
+    function lookahead2() {
+        var adv, pos, line, start, result;
+
+        // If we are collecting the tokens, don't grab the next one yet.
+        adv = (typeof extra.advance === 'function') ? extra.advance : advance;
+
+        pos = index;
+        line = lineNumber;
+        start = lineStart;
+
+        // Scan for the next immediate token.
+        if (buffer === null) {
+            buffer = adv();
+        }
+        index = buffer.range[1];
+        lineNumber = buffer.lineNumber;
+        lineStart = buffer.lineStart;
+
+        // Grab the token right after.
+        result = adv();
+        index = pos;
+        lineNumber = line;
+        lineStart = start;
+
+        return result;
+    }
+
     // Return true if there is a line terminator before the next token.
 
     function peekLineTerminator() {
@@ -1237,7 +1322,6 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
     }
 
     function throwErrorTolerant() {
-        var error;
         try {
             throwError.apply(null, arguments);
         } catch (e) {
@@ -1253,8 +1337,6 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
     // Throw an exception because of the token.
 
     function throwUnexpected(token) {
-        var s;
-
         if (token.type === Token.EOF) {
             throwError(token, Messages.UnexpectedEOS);
         }
@@ -1417,25 +1499,35 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
 
     // 11.1.5 Object Initialiser
 
-    function parsePropertyFunction(param, first) {
-        var previousStrict, body;
+    function parsePropertyFunction(param, options) {
+        var previousStrict, previousYieldAllowed, body;
 
         previousStrict = strict;
+        previousYieldAllowed = yieldAllowed;
+        yieldAllowed = options.generator;
         body = parseConciseBody();
-        if (first && strict && isRestrictedWord(param[0].name)) {
-            throwError(first, Messages.StrictParamName);
+        if (options.name && strict && isRestrictedWord(param[0].name)) {
+            throwError(options.name, Messages.StrictParamName);
+        }
+        if (yieldAllowed && !yieldFound) {
+            throwError({}, Messages.NoYieldInGenerator);
         }
         strict = previousStrict;
+        yieldAllowed = previousYieldAllowed;
 
         return {
             type: Syntax.FunctionExpression,
             id: null,
             params: param,
-            body: body
+            defaults: [],
+            body: body,
+            rest: null,
+            generator: options.generator,
+            expression: false
         };
     }
 
-    function parsePropertyMethodFunction() {
+    function parsePropertyMethodFunction(options) {
         var token, previousStrict, param, params, paramSet, method;
 
         previousStrict = strict;
@@ -1466,7 +1558,7 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
 
         expect(')');
 
-        method = parsePropertyFunction(params);
+        method = parsePropertyFunction(params, { generator: options.generator });
 
         strict = previousStrict;
 
@@ -1510,22 +1602,19 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
                 return {
                     type: Syntax.Property,
                     key: key,
-                    value: parsePropertyFunction([]),
+                    value: parsePropertyFunction([], { generator: false }),
                     kind: 'get'
                 };
             } else if (token.value === 'set' && !(match(':') || match('('))) {
                 key = parseObjectPropertyKey();
                 expect('(');
                 token = lookahead();
-                if (token.type !== Token.Identifier) {
-                    throwUnexpected(lex());
-                }
                 param = [ parseVariableIdentifier() ];
                 expect(')');
                 return {
                     type: Syntax.Property,
                     key: key,
-                    value: parsePropertyFunction(param, token),
+                    value: parsePropertyFunction(param, { generator: false, name: token }),
                     kind: 'set'
                 };
             } else {
@@ -1541,7 +1630,7 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
                     return {
                         type: Syntax.Property,
                         key: id,
-                        value: parsePropertyMethodFunction(),
+                        value: parsePropertyMethodFunction({ generator: false }),
                         kind: 'init',
                         method: true
                     };
@@ -1556,7 +1645,24 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
                 }
             }
         } else if (token.type === Token.EOF || token.type === Token.Punctuator) {
-            throwUnexpected(token);
+            if (!match('*')) {
+                throwUnexpected(token);
+            }
+            lex();
+
+            id = parseObjectPropertyKey();
+
+            if (!match('(')) {
+                throwUnexpected(lex());
+            }
+
+            return {
+                type: Syntax.Property,
+                key: id,
+                value: parsePropertyMethodFunction({ generator: true }),
+                kind: 'init',
+                method: true
+            };
         } else {
             key = parseObjectPropertyKey();
             if (match(':')) {
@@ -1571,7 +1677,7 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
                 return {
                     type: Syntax.Property,
                     key: key,
-                    value: parsePropertyMethodFunction(),
+                    value: parsePropertyMethodFunction({ generator: false }),
                     kind: 'init',
                     method: true
                 };
@@ -1588,7 +1694,7 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
     }
 
     function parseObjectInitialiser() {
-        var token, properties = [], property, name, kind, map = {}, toString = String;
+        var properties = [], property, name, kind, map = {}, toString = String;
 
         expect('{');
 
@@ -1667,6 +1773,18 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
             if (matchKeyword('function')) {
                 return parseFunctionExpression();
             }
+
+            if (matchKeyword('class')) {
+                return parseClassExpression();
+            }
+
+            if (matchKeyword('super')) {
+                lex();
+                return {
+                    type: Syntax.Identifier,
+                    name: 'super'
+                };
+            }
         }
 
         if (type === Token.BooleanLiteral) {
@@ -1692,6 +1810,7 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         if (match('(')) {
             lex();
             state.lastParenthesized = expr = parseExpression();
+            state.parenthesizedCount += 1;
             expect(')');
             return expr;
         }
@@ -1963,34 +2082,19 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
 
         previousAllowIn = state.allowIn;
         state.allowIn = true;
-        expr = parseShiftExpression();
-        state.allowIn = previousAllowIn;
 
-        if (match('<') || match('>') || match('<=') || match('>=')) {
+        expr = parseShiftExpression();
+
+        while (match('<') || match('>') || match('<=') || match('>=') || (previousAllowIn && matchKeyword('in')) || matchKeyword('instanceof')) {
             expr = {
                 type: Syntax.BinaryExpression,
                 operator: lex().value,
                 left: expr,
-                right: parseRelationalExpression()
-            };
-        } else if (state.allowIn && matchKeyword('in')) {
-            lex();
-            expr = {
-                type: Syntax.BinaryExpression,
-                operator: 'in',
-                left: expr,
-                right: parseRelationalExpression()
-            };
-        } else if (matchKeyword('instanceof')) {
-            lex();
-            expr = {
-                type: Syntax.BinaryExpression,
-                operator: 'instanceof',
-                left: expr,
-                right: parseRelationalExpression()
+                right: parseShiftExpression()
             };
         }
 
+        state.allowIn = previousAllowIn;
         return expr;
     }
 
@@ -2029,14 +2133,14 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         return expr;
     }
 
-    function parseBitwiseORExpression() {
+    function parseBitwiseXORExpression() {
         var expr = parseBitwiseANDExpression();
 
-        while (match('|')) {
+        while (match('^')) {
             lex();
             expr = {
                 type: Syntax.BinaryExpression,
-                operator: '|',
+                operator: '^',
                 left: expr,
                 right: parseBitwiseANDExpression()
             };
@@ -2045,16 +2149,16 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         return expr;
     }
 
-    function parseBitwiseXORExpression() {
-        var expr = parseBitwiseORExpression();
+    function parseBitwiseORExpression() {
+        var expr = parseBitwiseXORExpression();
 
-        while (match('^')) {
+        while (match('|')) {
             lex();
             expr = {
                 type: Syntax.BinaryExpression,
-                operator: '^',
+                operator: '|',
                 left: expr,
-                right: parseBitwiseORExpression()
+                right: parseBitwiseXORExpression()
             };
         }
 
@@ -2064,7 +2168,7 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
     // 11.11 Binary Logical Operators
 
     function parseLogicalANDExpression() {
-        var expr = parseBitwiseXORExpression();
+        var expr = parseBitwiseORExpression();
 
         while (match('&&')) {
             lex();
@@ -2072,7 +2176,7 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
                 type: Syntax.LogicalExpression,
                 operator: '&&',
                 left: expr,
-                right: parseBitwiseXORExpression()
+                right: parseBitwiseORExpression()
             };
         }
 
@@ -2154,10 +2258,89 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         }
     }
 
+    function reinterpretAsCoverFormalsList(expr) {
+        var i, len, param, paramSet;
+        assert(expr.type === Syntax.SequenceExpression);
+
+        paramSet = {};
+
+        for (i = 0, len = expr.expressions.length; i < len; i += 1) {
+            param = expr.expressions[i];
+            if (param.type !== Syntax.Identifier) {
+                return null;
+            }
+            if (isRestrictedWord(param.name)) {
+                throwError({}, Messages.StrictParamName);
+            }
+            if (Object.prototype.hasOwnProperty.call(paramSet, param.name)) {
+                throwError({}, Messages.StrictParamDupe);
+            }
+            paramSet[param.name] = true;
+        }
+        return expr.expressions;
+    }
+
+    function parseArrowFunctionExpression(param) {
+        var previousStrict, previousYieldAllowed, body;
+
+        expect('=>');
+
+        previousStrict = strict;
+        previousYieldAllowed = yieldAllowed;
+        strict = true;
+        yieldAllowed = false;
+        body = parseConciseBody();
+        strict = previousStrict;
+        yieldAllowed = previousYieldAllowed;
+
+        return {
+            type: Syntax.ArrowFunctionExpression,
+            id: null,
+            params: param,
+            body: body
+        };
+    }
+
     function parseAssignmentExpression() {
-        var expr;
+        var expr, token, oldParenthesizedCount, coverFormalsList;
+
+        if (matchKeyword('yield')) {
+            return parseYieldExpression();
+        }
+
+        oldParenthesizedCount = state.parenthesizedCount;
+
+        if (match('(')) {
+            token = lookahead2();
+            if (token.type === Token.Punctuator && token.value === ')') {
+                lex();
+                lex();
+                if (!match('=>')) {
+                    throwUnexpected(lex());
+                }
+                return parseArrowFunctionExpression([]);
+            }
+        }
 
         expr = parseConditionalExpression();
+
+        if (match('=>')) {
+            if (expr.type === Syntax.Identifier) {
+                if (state.parenthesizedCount === oldParenthesizedCount || state.parenthesizedCount === (oldParenthesizedCount + 1)) {
+                    if (isRestrictedWord(expr.name)) {
+                        throwError({}, Messages.StrictParamName);
+                    }
+                    return parseArrowFunctionExpression([ expr ]);
+                }
+            } else if (expr.type === Syntax.SequenceExpression) {
+                if (state.parenthesizedCount === (oldParenthesizedCount + 1)) {
+                    coverFormalsList = reinterpretAsCoverFormalsList(expr);
+                    if (coverFormalsList) {
+                        return parseArrowFunctionExpression(coverFormalsList);
+                    }
+                }
+            }
+        }
 
         if (matchAssign()) {
             // 11.13.1
@@ -2362,10 +2545,9 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
     function parseModuleDeclaration() {
         var id, token, declaration;
 
-        expectKeyword('module');
-
-        if (peekLineTerminator()) {
-            throwError({}, Messages.NewlineAfterModule);
+        token = lex();
+        if (token.value !== 'module') {
+            throwUnexpected(token);
         }
 
         id = parseVariableIdentifier();
@@ -2458,13 +2640,13 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
     }
 
     function parseExportDeclaration() {
-        var id, token, declaration, specifiers;
+        var token, specifiers;
 
         expectKeyword('export');
 
         token = lookahead();
 
-        if (token.type === Token.Keyword) {
+        if (token.type === Token.Keyword || (token.type === Token.Identifier && token.value === 'module')) {
             switch (token.value) {
             case 'function':
                 return {
@@ -2690,7 +2872,7 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
     }
 
     function parseForStatement() {
-        var init, test, update, left, right, body, operator, oldInIteration, i, len;
+        var init, test, update, left, right, body, operator, oldInIteration;
 
         init = test = update = null;
 
@@ -2788,8 +2970,7 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
                 type: Syntax.ForOfStatement,
                 left: left,
                 right: right,
-                body: body,
-                each: false
+                body: body
             };
         }
     }
@@ -2991,7 +3172,7 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
             if (match('}') || matchKeyword('default') || matchKeyword('case')) {
                 break;
             }
-            statement = parseStatement();
+            statement = parseSourceElement();
             if (typeof statement === 'undefined') {
                 break;
             }
@@ -3006,7 +3187,7 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
     }
 
     function parseSwitchStatement() {
-        var discriminant, cases, oldInSwitch;
+        var discriminant, cases, clause, oldInSwitch, defaultFound;
 
         expectKeyword('switch');
 
@@ -3030,12 +3211,20 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
 
         oldInSwitch = state.inSwitch;
         state.inSwitch = true;
+        defaultFound = false;
 
         while (index < length) {
             if (match('}')) {
                 break;
             }
-            cases.push(parseSwitchCase());
+            clause = parseSwitchCase();
+            if (clause.test === null) {
+                if (defaultFound) {
+                    throwError({}, Messages.MultipleDefaultsInSwitch);
+                }
+                defaultFound = true;
+            }
+            cases.push(clause);
         }
 
         state.inSwitch = oldInSwitch;
@@ -3173,6 +3362,8 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
                 return parseForStatement();
             case 'function':
                 return parseFunctionDeclaration();
+            case 'class':
+                return parseClassDeclaration();
             case 'if':
                 return parseIfStatement();
             case 'return':
@@ -3235,7 +3426,7 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
 
     function parseFunctionSourceElements() {
         var sourceElement, sourceElements = [], token, directive, firstRestricted,
-            oldLabelSet, oldInIteration, oldInSwitch, oldInFunctionBody;
+            oldLabelSet, oldInIteration, oldInSwitch, oldInFunctionBody, oldParenthesizedCount;
 
         expect('{');
 
@@ -3268,11 +3459,13 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         oldInIteration = state.inIteration;
         oldInSwitch = state.inSwitch;
         oldInFunctionBody = state.inFunctionBody;
+        oldParenthesizedCount = state.parenthesizedCount;
 
         state.labelSet = {};
         state.inIteration = false;
         state.inSwitch = false;
         state.inFunctionBody = true;
+        state.parenthesizedCount = 0;
 
         while (index < length) {
             if (match('}')) {
@@ -3291,6 +3484,7 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         state.inIteration = oldInIteration;
         state.inSwitch = oldInSwitch;
         state.inFunctionBody = oldInFunctionBody;
+        state.parenthesizedCount = oldParenthesizedCount;
 
         return {
             type: Syntax.BlockStatement,
@@ -3299,10 +3493,18 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
     }
 
     function parseFunctionDeclaration() {
-        var id, param, params = [], body, token, firstRestricted, message, previousStrict, paramSet;
+        var id, param, params = [], body, token, firstRestricted, message, previousStrict, previousYieldAllowed, paramSet, generator;
 
         expectKeyword('function');
+
+        generator = false;
+        if (match('*')) {
+            lex();
+            generator = true;
+        }
+
         token = lookahead();
+
         id = parseVariableIdentifier();
         if (strict) {
             if (isRestrictedWord(token.value)) {
@@ -3356,24 +3558,41 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         expect(')');
 
         previousStrict = strict;
+        previousYieldAllowed = yieldAllowed;
+        yieldAllowed = generator;
         body = parseFunctionSourceElements();
         if (strict && firstRestricted) {
             throwError(firstRestricted, message);
         }
+        if (yieldAllowed && !yieldFound) {
+            throwError({}, Messages.NoYieldInGenerator);
+        }
         strict = previousStrict;
+        yieldAllowed = previousYieldAllowed;
 
         return {
             type: Syntax.FunctionDeclaration,
             id: id,
             params: params,
-            body: body
+            defaults: [],
+            body: body,
+            rest: null,
+            generator: generator,
+            expression: false
         };
     }
 
     function parseFunctionExpression() {
-        var token, id = null, firstRestricted, message, param, params = [], body, previousStrict, paramSet;
+        var token, id = null, firstRestricted, message, param, params = [], body, previousStrict, previousYieldAllowed, paramSet, generator;
 
         expectKeyword('function');
+
+        generator = false;
+
+        if (match('*')) {
+            lex();
+            generator = true;
+        }
 
         if (!match('(')) {
             token = lookahead();
@@ -3431,21 +3650,194 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         expect(')');
 
         previousStrict = strict;
+        previousYieldAllowed = yieldAllowed;
+        yieldAllowed = generator;
         body = parseFunctionSourceElements();
         if (strict && firstRestricted) {
             throwError(firstRestricted, message);
         }
+        if (yieldAllowed && !yieldFound) {
+            throwError({}, Messages.NoYieldInGenerator);
+        }
         strict = previousStrict;
+        yieldAllowed = previousYieldAllowed;
+
 
         return {
             type: Syntax.FunctionExpression,
             id: id,
             params: params,
-            body: body
+            defaults: [],
+            body: body,
+            rest: null,
+            generator: generator,
+            expression: false
         };
     }
 
-    // 14 Program
+    function parseYieldExpression() {
+        var delegate, expr, previousYieldAllowed;
+
+        expectKeyword('yield');
+
+        if (!yieldAllowed) {
+            throwErrorTolerant({}, Messages.IllegalYield);
+        }
+
+        delegate = false;
+        if (match('*')) {
+            lex();
+            delegate = true;
+        }
+
+        // It is a Syntax Error if any AssignmentExpression Contains YieldExpression.
+        previousYieldAllowed = yieldAllowed;
+        yieldAllowed = false;
+        expr = parseAssignmentExpression();
+        yieldAllowed = previousYieldAllowed;
+        yieldFound = true;
+
+        return {
+            type: Syntax.YieldExpression,
+            argument: expr,
+            delegate: delegate
+        };
+    }
+
+    // 14 Classes
+
+    function parseMethodDefinition() {
+        var token, key, param;
+
+        if (match('*')) {
+            lex();
+            return {
+                type: Syntax.MethodDefinition,
+                key: parseObjectPropertyKey(),
+                value: parsePropertyMethodFunction({ generator: true }),
+                kind: ''
+            };
+        }
+
+        token = lookahead();
+        key = parseObjectPropertyKey();
+
+        if (token.value === 'get' && !match('(')) {
+            key = parseObjectPropertyKey();
+            expect('(');
+            expect(')');
+            return {
+                type: Syntax.MethodDefinition,
+                key: key,
+                value: parsePropertyFunction([], { generator: false }),
+                kind: 'get'
+            };
+        } else if (token.value === 'set' && !match('(')) {
+            key = parseObjectPropertyKey();
+            expect('(');
+            token = lookahead();
+            param = [ parseVariableIdentifier() ];
+            expect(')');
+            return {
+                type: Syntax.MethodDefinition,
+                key: key,
+                value: parsePropertyFunction(param, { generator: false, name: token }),
+                kind: 'set'
+            };
+        } else {
+            return {
+                type: Syntax.MethodDefinition,
+                key: key,
+                value: parsePropertyMethodFunction({ generator: false }),
+                kind: ''
+            };
+        }
+    }
+
+    function parseClassElement() {
+        if (match(';')) {
+            lex();
+            return;
+        } else {
+            return parseMethodDefinition();
+        }
+    }
+
+    function parseClassBody() {
+        var classElement, classElements = [];
+
+        expect('{');
+
+        while (index < length) {
+            if (match('}')) {
+                break;
+            }
+            classElement = parseClassElement();
+            if (typeof classElement !== 'undefined') {
+                classElements.push(classElement);
+            }
+        }
+
+        expect('}');
+
+        return {
+            type: Syntax.ClassBody,
+            body: classElements
+        };
+    }
+
+    function parseClassExpression() {
+        var id, body, previousYieldAllowed, superClass;
+
+        expectKeyword('class');
+
+        if (!matchKeyword('extends') && !match('{')) {
+            id = parseVariableIdentifier();
+        }
+
+        if (matchKeyword('extends')) {
+            expectKeyword('extends');
+            previousYieldAllowed = yieldAllowed;
+            yieldAllowed = false;
+            superClass = parseAssignmentExpression();
+            yieldAllowed = previousYieldAllowed;
+        }
+
+        body = parseClassBody();
+        return {
+            id: id,
+            type: Syntax.ClassExpression,
+            body: body,
+            superClass: superClass
+        };
+    }
+
+    function parseClassDeclaration() {
+        var token, id, body, previousYieldAllowed, superClass;
+
+        expectKeyword('class');
+
+        token = lookahead();
+        id = parseVariableIdentifier();
+
+        if (matchKeyword('extends')) {
+            expectKeyword('extends');
+            previousYieldAllowed = yieldAllowed;
+            yieldAllowed = false;
+            superClass = parseAssignmentExpression();
+            yieldAllowed = previousYieldAllowed;
+        }
+
+        body = parseClassBody();
+        return {
+            id: id,
+            type: Syntax.ClassDeclaration,
+            body: body,
+            superClass: superClass
+        };
+    }
+
+    // 15 Program
 
     function parseSourceElement() {
         var token = lookahead();
@@ -3468,16 +3860,22 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
     }
 
     function parseProgramElement() {
-        var token = lookahead();
+        var token = lookahead(), lineNumber;
 
         if (token.type === Token.Keyword) {
             switch (token.value) {
-            case 'module':
-                return parseModuleDeclaration(token.value);
             case 'export':
                 return parseExportDeclaration();
             case 'import':
                 return parseImportDeclaration();
+            }
+        }
+
+        if (token.value === 'module' && token.type === Token.Identifier) {
+            lineNumber = token.lineNumber;
+            token = lookahead2();
+            if (token.type === Token.Identifier && token.lineNumber === lineNumber) {
+                return parseModuleDeclaration();
             }
         }
 
@@ -3562,6 +3960,8 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
     function parseProgram() {
         var program;
         strict = false;
+        yieldAllowed = false;
+        yieldFound = false;
         program = {
             type: Syntax.Program,
             body: parseProgramElements()
@@ -3572,7 +3972,7 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
     // The following functions are needed only when the option to preserve
     // the comments is active.
 
-    function addComment(start, end, type, value) {
+    function addComment(type, value, start, end, loc) {
         assert(typeof start === 'number', 'Comment must have valid position');
 
         // Because the way the actual token is scanned, often the comments
@@ -3586,14 +3986,15 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         }
 
         extra.comments.push({
-            range: [start, end],
             type: type,
-            value: value
+            value: value,
+            range: [start, end],
+            loc: loc
         });
     }
 
     function scanComment() {
-        var comment, ch, start, blockComment, lineComment;
+        var comment, ch, loc, start, blockComment, lineComment;
 
         comment = '';
         blockComment = false;
@@ -3604,19 +4005,27 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
 
             if (lineComment) {
                 ch = nextChar();
-                if (index >= length) {
+                if (isLineTerminator(ch)) {
+                    loc.end = {
+                        line: lineNumber,
+                        column: index - lineStart - 1
+                    };
                     lineComment = false;
-                    comment += ch;
-                    addComment(start, index, 'Line', comment);
-                } else if (isLineTerminator(ch)) {
-                    lineComment = false;
-                    addComment(start, index, 'Line', comment);
+                    addComment('Line', comment, start, index - 1, loc);
                     if (ch === '\r' && source[index] === '\n') {
                         ++index;
                     }
                     ++lineNumber;
                     lineStart = index;
                     comment = '';
+                } else if (index >= length) {
+                    lineComment = false;
+                    comment += ch;
+                    loc.end = {
+                        line: lineNumber,
+                        column: length - lineStart
+                    };
+                    addComment('Line', comment, start, length, loc);
                 } else {
                     comment += ch;
                 }
@@ -3646,7 +4055,11 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
                             comment = comment.substr(0, comment.length - 1);
                             blockComment = false;
                             ++index;
-                            addComment(start, index, 'Block', comment);
+                            loc.end = {
+                                line: lineNumber,
+                                column: index - lineStart
+                            };
+                            addComment('Block', comment, start, index, loc);
                             comment = '';
                         }
                     }
@@ -3654,13 +4067,33 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
             } else if (ch === '/') {
                 ch = source[index + 1];
                 if (ch === '/') {
+                    loc = {
+                        start: {
+                            line: lineNumber,
+                            column: index - lineStart
+                        }
+                    };
                     start = index;
                     index += 2;
                     lineComment = true;
+                    if (index >= length) {
+                        loc.end = {
+                            line: lineNumber,
+                            column: index - lineStart
+                        };
+                        lineComment = false;
+                        addComment('Line', comment, start, index, loc);
+                    }
                 } else if (ch === '*') {
                     start = index;
                     index += 2;
                     blockComment = true;
+                    loc = {
+                        start: {
+                            line: lineNumber,
+                            column: index - lineStart - 2
+                        }
+                    };
                     if (index >= length) {
                         throwError({}, Messages.UnexpectedToken, 'ILLEGAL');
                     }
@@ -3682,10 +4115,44 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         }
     }
 
+    function filterCommentLocation() {
+        var i, entry, comment, comments = [];
+
+        for (i = 0; i < extra.comments.length; ++i) {
+            entry = extra.comments[i];
+            comment = {
+                type: entry.type,
+                value: entry.value
+            };
+            if (extra.range) {
+                comment.range = entry.range;
+            }
+            if (extra.loc) {
+                comment.loc = entry.loc;
+            }
+            comments.push(comment);
+        }
+
+        extra.comments = comments;
+    }
+
     function collectToken() {
-        var token = extra.advance(),
-            range,
-            value;
+        var start, loc, token, range, value;
+
+        skipComment();
+        start = index;
+        loc = {
+            start: {
+                line: lineNumber,
+                column: index - lineStart
+            }
+        };
+
+        token = extra.advance();
+        loc.end = {
+            line: lineNumber,
+            column: index - lineStart
+        };
 
         if (token.type !== Token.EOF) {
             range = [token.range[0], token.range[1]];
@@ -3693,7 +4160,8 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
             extra.tokens.push({
                 type: TokenName[token.type],
                 value: value,
-                range: range
+                range: range,
+                loc: loc
             });
         }
 
@@ -3701,12 +4169,23 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
     }
 
     function collectRegex() {
-        var pos, regex, token;
+        var pos, loc, regex, token;
 
         skipComment();
 
         pos = index;
+        loc = {
+            start: {
+                line: lineNumber,
+                column: index - lineStart
+            }
+        };
+
         regex = extra.scanRegExp();
+        loc.end = {
+            line: lineNumber,
+            column: index - lineStart
+        };
 
         // Pop the previous token, which is likely '/' or '/='
         if (extra.tokens.length > 0) {
@@ -3721,10 +4200,32 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         extra.tokens.push({
             type: 'RegularExpression',
             value: regex.literal,
-            range: [pos, index]
+            range: [pos, index],
+            loc: loc
         });
 
         return regex;
+    }
+
+    function filterTokenLocation() {
+        var i, entry, token, tokens = [];
+
+        for (i = 0; i < extra.tokens.length; ++i) {
+            entry = extra.tokens[i];
+            token = {
+                type: entry.type,
+                value: entry.value
+            };
+            if (extra.range) {
+                token.range = entry.range;
+            }
+            if (extra.loc) {
+                token.loc = entry.loc;
+            }
+            tokens.push(token);
+        }
+
+        extra.tokens = tokens;
     }
 
     function createLiteral(token) {
@@ -3810,6 +4311,15 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
                             node.loc.start = node.object.loc.start;
                         }
                     }
+
+                    if (node.type === Syntax.CallExpression) {
+                        if (typeof node.callee.range !== 'undefined') {
+                            node.range[0] = node.callee.range[0];
+                        }
+                        if (typeof node.callee.loc !== 'undefined') {
+                            node.loc.start = node.callee.loc.start;
+                        }
+                    }
                     return node;
                 }
             };
@@ -3880,6 +4390,10 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
             extra.parseUnaryExpression = parseUnaryExpression;
             extra.parseVariableDeclaration = parseVariableDeclaration;
             extra.parseVariableIdentifier = parseVariableIdentifier;
+            extra.parseMethodDefinition = parseMethodDefinition;
+            extra.parseClassDeclaration = parseClassDeclaration;
+            extra.parseClassExpression = parseClassExpression;
+            extra.parseClassBody = parseClassBody;
 
             parseAdditiveExpression = wrapTracking(extra.parseAdditiveExpression);
             parseAssignmentExpression = wrapTracking(extra.parseAssignmentExpression);
@@ -3926,6 +4440,10 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
             parseUnaryExpression = wrapTracking(extra.parseUnaryExpression);
             parseVariableDeclaration = wrapTracking(extra.parseVariableDeclaration);
             parseVariableIdentifier = wrapTracking(extra.parseVariableIdentifier);
+            parseMethodDefinition = wrapTracking(extra.parseMethodDefinition);
+            parseClassDeclaration = wrapTracking(extra.parseClassDeclaration);
+            parseClassExpression = wrapTracking(extra.parseClassExpression);
+            parseClassBody = wrapTracking(extra.parseClassBody);
         }
 
         if (typeof extra.tokens !== 'undefined') {
@@ -3992,6 +4510,10 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
             parseUnaryExpression = extra.parseUnaryExpression;
             parseVariableDeclaration = extra.parseVariableDeclaration;
             parseVariableIdentifier = extra.parseVariableIdentifier;
+            parseMethodDefinition = extra.parseMethodDefinition;
+            parseClassDeclaration = extra.parseClassDeclaration;
+            parseClassExpression = extra.parseClassExpression;
+            parseClassBody = extra.parseClassBody;
         }
 
         if (typeof extra.scanRegExp === 'function') {
@@ -4027,6 +4549,7 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         state = {
             allowIn: true,
             labelSet: {},
+            parenthesizedCount: 0,
             lastParenthesized: null,
             inFunctionBody: false,
             inIteration: false,
@@ -4069,9 +4592,11 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
         try {
             program = parseProgram();
             if (typeof extra.comments !== 'undefined') {
+                filterCommentLocation();
                 program.comments = extra.comments;
             }
             if (typeof extra.tokens !== 'undefined') {
+                filterTokenLocation();
                 program.tokens = extra.tokens;
             }
             if (typeof extra.errors !== 'undefined') {
@@ -4088,7 +4613,7 @@ parseStatement: true, parseSourceElement: true, parseModuleBlock: true, parseCon
     }
 
     // Sync with package.json.
-    exports.version = '1.0.0-dev';
+    exports.version = '1.0.0-dev-harmony';
 
     exports.parse = parse;
 

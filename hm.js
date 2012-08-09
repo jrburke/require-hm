@@ -1,5 +1,5 @@
 /**
- * @license hm 0.2.0 Copyright (c) 2010-2012, The Dojo Foundation All Rights Reserved.
+ * @license hm 0.2.1 Copyright (c) 2010-2012, The Dojo Foundation All Rights Reserved.
  * Available via the MIT or new BSD license.
  * see: http://github.com/jrburke/require-hm for details
  */
@@ -258,7 +258,7 @@ define(['esprima', 'module'], function (esprima, module) {
         }
 
         each(tokens, function (token, i) {
-            if (token.type !== 'Keyword') {
+            if (token.type !== 'Keyword' && token.type !== 'Identifier') {
                 //Not relevant, skip
                 return;
             }
@@ -405,7 +405,7 @@ define(['esprima', 'module'], function (esprima, module) {
     }
 
     return {
-        version: '0.2.0',
+        version: '0.2.1',
 
         write: function (pluginName, name, write) {
             if (buildMap.hasOwnProperty(name)) {
